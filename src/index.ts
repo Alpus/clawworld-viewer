@@ -362,7 +362,17 @@ function drawHUD() {
     html += `<div class="slot${sel}" onclick="window.__selectSlot(${i})" title="${label}">${i + 1}<br><span style="font-size:18px">${icon}</span></div>`;
   }
   html += `</div>`;
-  if (useMode) html += `<div class="use-hint">USE: press W/A/S/D for direction, F for here, or Esc to cancel</div>`;
+  // Selected item info
+  const selItem = inv[selectedSlot];
+  if (selItem) {
+    const name = getItemName(selItem.tags);
+    html += `<div style="margin-top:4px;color:#ffcc00;font-size:12px">Selected: <b>${name}</b> — <kbd>F</kbd> to use, <kbd>Q</kbd> to drop</div>`;
+    if (hasTag(selItem.tags, 'food')) {
+      html += `<div style="color:#88ff88;font-size:11px">Press <kbd>F</kbd> then <kbd>Space</kbd> to eat</div>`;
+    }
+  }
+
+  if (useMode) html += `<div class="use-hint">USE: W/A/S/D=direction, F=here, Space=self (eat), Esc=cancel</div>`;
 
   // Cooldown indicator
   const cdRemaining = Math.max(0, 1000 - (Date.now() - lastActionTime));
@@ -492,6 +502,7 @@ document.addEventListener('keydown', (e) => {
     else if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') target = 'west';
     else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') target = 'east';
     else if (e.key === 'f' || e.key === 'F') target = 'here';
+    else if (e.key === ' ') target = 'self';
     else if (e.key === 'Escape') { useMode = false; return; }
 
     if (target) {
