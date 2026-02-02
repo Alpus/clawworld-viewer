@@ -89,7 +89,16 @@ function connect() {
 
       // Subscribe to all public tables
       _conn.subscriptionBuilder()
-        .onApplied(() => { console.log('Subscribed'); render(); })
+        .onApplied(() => {
+          console.log('Subscribed');
+          // Auto-detect returning player
+          const existing = getMyAgent();
+          if (existing) {
+            playing = true;
+            playBtn.style.display = 'none';
+          }
+          render();
+        })
         .subscribeToAllTables();
     })
     .onDisconnect(() => { console.log('Disconnected'); })
@@ -377,14 +386,36 @@ function getItemName(tags: string): string {
 
 function drawLeaderboard() {
   if (!conn) return;
+
+  // Build map of alive agents' born_at for current streak
+  const aliveBornAt = new Map<string, number>();
+  for (const a of conn.db.agent.iter()) {
+    const tags = parseTags(a.tags);
+    const born = getTagNum(tags, 'born_at');
+    if (born > 0) aliveBornAt.set(a.name, born);
+  }
+
   const entries: any[] = [];
   for (const lb of conn.db.leaderboard.iter()) entries.push(lb);
-  entries.sort((a, b) => Number(b.bestStreak - a.bestStreak));
+
+  // Sort by current streak (alive) or best streak (dead)
+  const nowMs = Date.now();
+  const getStreak = (e: any) => {
+    const born = aliveBornAt.get(e.name);
+    if (born) return nowMs - born; // alive — current streak
+    return Number(e.bestStreak); // dead — best streak
+  };
+  entries.sort((a, b) => getStreak(b) - getStreak(a));
 
   let html = '<h3>Leaderboard</h3>';
   for (const e of entries.slice(0, 10)) {
-    const streak = Number(e.bestStreak) / 1000;
-    html += `<div>${e.name}: ${streak.toFixed(0)}s | K:${e.totalKills} D:${e.totalDeaths}</div>`;
+    const alive = aliveBornAt.has(e.name);
+    const streak = Math.floor(getStreak(e) / 1000);
+    const mins = Math.floor(streak / 60);
+    const secs = streak % 60;
+    const timeStr = mins > 0 ? `${mins}m${secs}s` : `${secs}s`;
+    const prefix = alive ? '🟢' : '💀';
+    html += `<div>${prefix} ${e.name}: ${timeStr} | K:${e.totalKills} D:${e.totalDeaths}</div>`;
   }
   leaderboardDiv.innerHTML = html;
 }
@@ -436,9 +467,6 @@ document.addEventListener('keydown', (e) => {
 
   if (!playing || !conn) return;
   if (e.repeat) return; // ignore key repeat
-  const actionNow = Date.now();
-  if (actionNow - lastActionTime < CLIENT_COOLDOWN) return;
-  lastActionTime = actionNow;
 
   if (useMode) {
     let target = '';
