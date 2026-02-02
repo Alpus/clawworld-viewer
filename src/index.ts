@@ -1,0 +1,562 @@
+import { DbConnection, SubscriptionBuilder, type EventContext, type ReducerEventContext, type SubscriptionEventContext, type ErrorContext } from './module_bindings';
+import { Identity } from 'spacetimedb';
+
+// ============================================================
+// Constants
+// ============================================================
+const TILE_SIZE = 32;
+const CHUNK_SIZE = 16;
+const COLORS: Record<string, string> = {
+  grass: '#4a7c3f', dirt: '#8b7355', stone: '#808080', water: '#3a6ea5',
+};
+
+// ============================================================
+// State
+// ============================================================
+let conn: DbConnection | null = null;
+let myIdentity: Identity | null = null;
+let myToken: string | null = null;
+let playing = false;
+let selectedSlot = 0; // 0-7
+let chatOpen = false;
+let chatText = '';
+let useMode = false; // F pressed, waiting for direction
+let lastActionTime = 0;
+const CLIENT_COOLDOWN = 200; // ms, throttle actions client-side
+
+// Camera
+let camX = 0, camY = 0;
+let zoom = 1;
+let dragging = false;
+let dragStartX = 0, dragStartY = 0;
+let camStartX = 0, camStartY = 0;
+
+// Canvas
+const canvas = document.getElementById('game') as HTMLCanvasElement;
+const ctx2d = canvas.getContext('2d')!;
+const chatInput = document.getElementById('chat-input') as HTMLInputElement;
+const chatBox = document.getElementById('chat-box') as HTMLDivElement;
+const hud = document.getElementById('hud') as HTMLDivElement;
+const playBtn = document.getElementById('play-btn') as HTMLButtonElement;
+const leaderboardDiv = document.getElementById('leaderboard') as HTMLDivElement;
+
+// Messages with timestamps for fading
+const floatingMessages: { text: string; name: string; x: number; y: number; time: number }[] = [];
+
+// Track loaded chunks
+const loadedChunks = new Set<string>();
+
+// ============================================================
+// Tag helpers (client side)
+// ============================================================
+function parseTags(tags: string): Map<string, string | number | true> {
+  const map = new Map<string, string | number | true>();
+  if (!tags) return map;
+  for (const token of tags.split(',')) {
+    if (!token) continue;
+    const idx = token.indexOf(':');
+    if (idx === -1) { map.set(token, true); continue; }
+    const key = token.substring(0, idx);
+    const valStr = token.substring(idx + 1);
+    const num = parseFloat(valStr);
+    if (!isNaN(num) && isFinite(num)) map.set(key, num);
+    else map.set(token, true);
+  }
+  return map;
+}
+function getTag(tags: string, key: string): number {
+  const m = parseTags(tags);
+  const v = m.get(key);
+  return typeof v === 'number' ? v : 0;
+}
+function hasTag(tags: string, t: string): boolean { return parseTags(tags).has(t); }
+
+// ============================================================
+// Connection
+// ============================================================
+function connect() {
+  const savedToken = localStorage.getItem('clawworld_token') || undefined;
+  conn = DbConnection.builder()
+    .withUri('ws://localhost:3000')
+    .withModuleName('clawworld')
+    .withToken(savedToken)
+    .onConnect((_conn, identity, token) => {
+      myIdentity = identity;
+      myToken = token;
+      localStorage.setItem('clawworld_token', token);
+      console.log('Connected as', identity.toHexString());
+      setupCallbacks();
+
+      // Subscribe to all public tables
+      _conn.subscriptionBuilder()
+        .onApplied(() => { console.log('Subscribed'); render(); })
+        .subscribeToAllTables();
+    })
+    .onDisconnect(() => { console.log('Disconnected'); })
+    .onConnectError((e) => { console.error('Connect error:', e); })
+    .build();
+}
+
+// ============================================================
+// Get my agent
+// ============================================================
+function getMyAgent() {
+  if (!conn || !myIdentity) return null;
+  for (const a of conn.db.agent.iter()) {
+    if (a.identity?.isEqual?.(myIdentity)) return a;
+  }
+  return null;
+}
+
+// ============================================================
+// Inventory
+// ============================================================
+function getInventory() {
+  if (!conn || !myIdentity) return [];
+  const items: any[] = [];
+  for (const item of conn.db.item.iter()) {
+    if (item.carrier && item.carrier.isEqual?.(myIdentity)) items.push(item);
+  }
+  return items;
+}
+
+// ============================================================
+// Chunk loading
+// ============================================================
+function ensureChunksLoaded(centerX: number, centerY: number) {
+  if (!conn) return;
+  const cx = Math.floor(centerX / CHUNK_SIZE);
+  const cy = Math.floor(centerY / CHUNK_SIZE);
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const key = `${cx + dx},${cy + dy}`;
+      if (!loadedChunks.has(key)) {
+        loadedChunks.add(key);
+        conn.reducers.generateChunk({ chunkX: cx + dx, chunkY: cy + dy });
+      }
+    }
+  }
+}
+
+// ============================================================
+// Rendering
+// ============================================================
+function render() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!conn) return;
+
+  const agent = getMyAgent();
+  if (agent && playing) {
+    camX = agent.x * TILE_SIZE + TILE_SIZE / 2;
+    camY = agent.y * TILE_SIZE + TILE_SIZE / 2;
+    ensureChunksLoaded(agent.x, agent.y);
+  }
+
+  ctx2d.save();
+  ctx2d.translate(canvas.width / 2, canvas.height / 2);
+  ctx2d.scale(zoom, zoom);
+  ctx2d.translate(-camX, -camY);
+
+  // Visible bounds
+  const halfW = canvas.width / 2 / zoom;
+  const halfH = canvas.height / 2 / zoom;
+  const minTX = Math.floor((camX - halfW) / TILE_SIZE) - 1;
+  const maxTX = Math.ceil((camX + halfW) / TILE_SIZE) + 1;
+  const minTY = Math.floor((camY - halfH) / TILE_SIZE) - 1;
+  const maxTY = Math.ceil((camY + halfH) / TILE_SIZE) + 1;
+
+  // Draw tiles
+  for (const tile of conn.db.tile.iter()) {
+    if (tile.x < minTX || tile.x > maxTX || tile.y < minTY || tile.y > maxTY) continue;
+    const tags = parseTags(tile.tags);
+    let color = '#333';
+    if (tags.has('surface:grass')) color = COLORS.grass;
+    else if (tags.has('surface:dirt')) color = COLORS.dirt;
+    else if (tags.has('surface:stone')) color = COLORS.stone;
+    else if (tags.has('surface:water')) color = COLORS.water;
+
+    ctx2d.fillStyle = color;
+    ctx2d.fillRect(tile.x * TILE_SIZE, tile.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    ctx2d.strokeStyle = 'rgba(0,0,0,0.1)';
+    ctx2d.strokeRect(tile.x * TILE_SIZE, tile.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+  }
+
+  // Draw ground items
+  for (const item of conn.db.item.iter()) {
+    if (item.carrier) continue;
+    if (item.x < minTX || item.x > maxTX || item.y < minTY || item.y > maxTY) continue;
+    drawItem(item);
+  }
+
+  // Draw agents
+  for (const a of conn.db.agent.iter()) {
+    if (a.x < minTX || a.x > maxTX || a.y < minTY || a.y > maxTY) continue;
+    drawAgent(a);
+  }
+
+  // Draw floating messages
+  const now = Date.now();
+  for (let i = floatingMessages.length - 1; i >= 0; i--) {
+    const msg = floatingMessages[i];
+    const age = now - msg.time;
+    if (age > 5000) { floatingMessages.splice(i, 1); continue; }
+    const alpha = Math.max(0, 1 - age / 5000);
+    ctx2d.globalAlpha = alpha;
+    ctx2d.fillStyle = 'white';
+    ctx2d.strokeStyle = 'black';
+    ctx2d.lineWidth = 2;
+    ctx2d.font = '12px monospace';
+    ctx2d.textAlign = 'center';
+    const tx = msg.x * TILE_SIZE + TILE_SIZE / 2;
+    const ty = msg.y * TILE_SIZE - 8 - (age / 5000) * 20;
+    ctx2d.strokeText(msg.text, tx, ty);
+    ctx2d.fillText(msg.text, tx, ty);
+    ctx2d.globalAlpha = 1;
+  }
+
+  ctx2d.restore();
+
+  // HUD
+  drawHUD();
+  drawLeaderboard();
+
+  requestAnimationFrame(render);
+}
+
+function drawItem(item: any) {
+  const cx = item.x * TILE_SIZE + TILE_SIZE / 2;
+  const cy = item.y * TILE_SIZE + TILE_SIZE / 2;
+  const tags = parseTags(item.tags);
+
+  if (tags.has('name:tree')) {
+    // Dark green circle
+    ctx2d.fillStyle = '#2d5a1e';
+    ctx2d.beginPath();
+    ctx2d.arc(cx, cy - 4, 10, 0, Math.PI * 2);
+    ctx2d.fill();
+    ctx2d.fillStyle = '#5c3a1e';
+    ctx2d.fillRect(cx - 2, cy + 2, 4, 10);
+  } else if (tags.has('name:berry_bush')) {
+    ctx2d.fillStyle = '#3a8a2e';
+    ctx2d.beginPath();
+    ctx2d.arc(cx, cy, 8, 0, Math.PI * 2);
+    ctx2d.fill();
+    if (tags.has('harvestable')) {
+      // Red dots
+      for (const [ox, oy] of [[-3,-3],[3,-2],[0,3],[4,1]]) {
+        ctx2d.fillStyle = '#cc2222';
+        ctx2d.beginPath();
+        ctx2d.arc(cx + ox, cy + oy, 2, 0, Math.PI * 2);
+        ctx2d.fill();
+      }
+    }
+  } else if (tags.has('name:sword')) {
+    ctx2d.fillStyle = '#c0c0c0';
+    ctx2d.fillRect(cx - 1, cy - 8, 3, 16);
+    ctx2d.fillStyle = '#8b6914';
+    ctx2d.fillRect(cx - 4, cy + 4, 9, 3);
+  } else if (tags.has('name:axe')) {
+    ctx2d.fillStyle = '#8b6914';
+    ctx2d.fillRect(cx - 1, cy - 6, 3, 14);
+    ctx2d.fillStyle = '#808080';
+    ctx2d.fillRect(cx + 2, cy - 6, 6, 8);
+  } else if (tags.has('name:berries')) {
+    ctx2d.fillStyle = '#cc2222';
+    ctx2d.beginPath();
+    ctx2d.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx2d.fill();
+  } else if (tags.has('name:wood')) {
+    ctx2d.fillStyle = '#8b6914';
+    ctx2d.fillRect(cx - 6, cy - 2, 12, 5);
+  } else {
+    ctx2d.fillStyle = '#ffff00';
+    ctx2d.font = '10px monospace';
+    ctx2d.fillText('?', cx - 3, cy + 3);
+  }
+}
+
+function drawAgent(a: any) {
+  const cx = a.x * TILE_SIZE + TILE_SIZE / 2;
+  const cy = a.y * TILE_SIZE + TILE_SIZE / 2;
+  const isMe = myIdentity && a.identity?.isEqual?.(myIdentity);
+
+  // Body (crab = red circle)
+  ctx2d.fillStyle = isMe ? '#ff4444' : '#cc3333';
+  ctx2d.beginPath();
+  ctx2d.arc(cx, cy, 10, 0, Math.PI * 2);
+  ctx2d.fill();
+  ctx2d.strokeStyle = isMe ? '#ffcc00' : '#000';
+  ctx2d.lineWidth = isMe ? 2 : 1;
+  ctx2d.stroke();
+
+  // Eyes
+  ctx2d.fillStyle = 'white';
+  ctx2d.beginPath(); ctx2d.arc(cx - 3, cy - 3, 2.5, 0, Math.PI * 2); ctx2d.fill();
+  ctx2d.beginPath(); ctx2d.arc(cx + 3, cy - 3, 2.5, 0, Math.PI * 2); ctx2d.fill();
+  ctx2d.fillStyle = 'black';
+  ctx2d.beginPath(); ctx2d.arc(cx - 3, cy - 3, 1, 0, Math.PI * 2); ctx2d.fill();
+  ctx2d.beginPath(); ctx2d.arc(cx + 3, cy - 3, 1, 0, Math.PI * 2); ctx2d.fill();
+
+  // Claws
+  ctx2d.strokeStyle = isMe ? '#ff4444' : '#cc3333';
+  ctx2d.lineWidth = 2;
+  ctx2d.beginPath(); ctx2d.moveTo(cx - 10, cy); ctx2d.lineTo(cx - 15, cy - 5); ctx2d.stroke();
+  ctx2d.beginPath(); ctx2d.moveTo(cx + 10, cy); ctx2d.lineTo(cx + 15, cy - 5); ctx2d.stroke();
+
+  // Name
+  ctx2d.fillStyle = 'white';
+  ctx2d.strokeStyle = 'black';
+  ctx2d.lineWidth = 2;
+  ctx2d.font = 'bold 10px monospace';
+  ctx2d.textAlign = 'center';
+  ctx2d.strokeText(a.name, cx, cy - 16);
+  ctx2d.fillText(a.name, cx, cy - 16);
+
+  // HP bar
+  const hp = getTag(a.tags, 'hp');
+  const barW = 24;
+  const barH = 3;
+  const barX = cx - barW / 2;
+  const barY = cy + 14;
+  ctx2d.fillStyle = '#333';
+  ctx2d.fillRect(barX, barY, barW, barH);
+  ctx2d.fillStyle = hp > 50 ? '#22cc22' : hp > 25 ? '#cccc22' : '#cc2222';
+  ctx2d.fillRect(barX, barY, barW * (hp / 100), barH);
+}
+
+function drawHUD() {
+  const agent = getMyAgent();
+  if (!agent || !playing) {
+    // Show play button area
+    if (!playing) {
+      playBtn.style.display = 'block';
+    }
+    return;
+  }
+  playBtn.style.display = 'none';
+
+  const hp = getTag(agent.tags, 'hp');
+  const hunger = getTag(agent.tags, 'hunger');
+  const inv = getInventory();
+
+  let html = `<div class="stat">HP: <span class="bar"><span class="fill hp" style="width:${hp}%"></span></span> ${hp}</div>`;
+  html += `<div class="stat">Hunger: <span class="bar"><span class="fill hunger" style="width:${hunger}%"></span></span> ${hunger}</div>`;
+  html += `<div class="inventory">`;
+  for (let i = 0; i < 8; i++) {
+    const item = inv[i];
+    const sel = i === selectedSlot ? ' selected' : '';
+    const label = item ? getItemName(item.tags) : '';
+    html += `<div class="slot${sel}" onclick="window.__selectSlot(${i})">${i + 1}<br>${label}</div>`;
+  }
+  html += `</div>`;
+  if (useMode) html += `<div class="use-hint">USE: press W/A/S/D for direction, F for here, or Esc to cancel</div>`;
+
+  // Cooldown indicator
+  const cdRemaining = Math.max(0, 1000 - (Date.now() - lastActionTime));
+  if (cdRemaining > 0) {
+    const cdPct = (cdRemaining / 1000) * 100;
+    html += `<div class="stat" style="margin-top:6px">Action: <span class="bar"><span class="fill" style="width:${cdPct}%;background:#cc4444"></span></span></div>`;
+  } else {
+    html += `<div class="stat" style="margin-top:6px;color:#66ff66">Action: READY</div>`;
+  }
+
+  hud.innerHTML = html;
+  hud.style.display = 'block';
+}
+
+function getItemName(tags: string): string {
+  const m = parseTags(tags);
+  for (const [k] of m) {
+    if (k.startsWith('name:')) return k.substring(5);
+  }
+  return '?';
+}
+
+function drawLeaderboard() {
+  if (!conn) return;
+  const entries: any[] = [];
+  for (const lb of conn.db.leaderboard.iter()) entries.push(lb);
+  entries.sort((a, b) => Number(b.bestStreak - a.bestStreak));
+
+  let html = '<h3>Leaderboard</h3>';
+  for (const e of entries.slice(0, 10)) {
+    const streak = Number(e.bestStreak) / 1000;
+    html += `<div>${e.name}: ${streak.toFixed(0)}s | K:${e.totalKills} D:${e.totalDeaths}</div>`;
+  }
+  leaderboardDiv.innerHTML = html;
+}
+
+// ============================================================
+// Controls
+// ============================================================
+(window as any).__selectSlot = (i: number) => { selectedSlot = i; };
+(window as any).__getConn = () => conn;
+(window as any).__setPlaying = (v: boolean) => { playing = v; };
+(window as any).__getState = () => ({
+  playing,
+  myIdentity: myIdentity?.toHexString(),
+  myAgent: getMyAgent(),
+  inventoryCount: getInventory().length,
+});
+
+playBtn.addEventListener('click', () => {
+  const name = prompt('Enter your name (alphanumeric, max 32):');
+  if (!name) return;
+  if (!conn) return;
+  conn.reducers.register({ name });
+  playing = true;
+  playBtn.style.display = 'none';
+
+  // Check if already registered (returning player)
+  const existing = getMyAgent();
+  if (existing) playing = true;
+});
+
+document.addEventListener('keydown', (e) => {
+  if (chatOpen) {
+    if (e.key === 'Enter') {
+      if (chatText.trim() && conn) {
+        conn.reducers.say({ text: chatText.trim() });
+      }
+      chatText = '';
+      chatInput.value = '';
+      chatInput.style.display = 'none';
+      chatOpen = false;
+    } else if (e.key === 'Escape') {
+      chatText = '';
+      chatInput.value = '';
+      chatInput.style.display = 'none';
+      chatOpen = false;
+    }
+    return;
+  }
+
+  if (!playing || !conn) return;
+  if (e.repeat) return; // ignore key repeat
+  const actionNow = Date.now();
+  if (actionNow - lastActionTime < CLIENT_COOLDOWN) return;
+  lastActionTime = actionNow;
+
+  if (useMode) {
+    let target = '';
+    if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') target = 'north';
+    else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') target = 'south';
+    else if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') target = 'west';
+    else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') target = 'east';
+    else if (e.key === 'f' || e.key === 'F') target = 'here';
+    else if (e.key === 'Escape') { useMode = false; return; }
+
+    if (target) {
+      const inv = getInventory();
+      const item = inv[selectedSlot];
+      const itemId = item ? item.id : 0n;
+      conn.reducers.use({ itemId, target });
+      useMode = false;
+    }
+    return;
+  }
+
+  // Movement
+  if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') conn.reducers.move({ direction: 'north' });
+  else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') conn.reducers.move({ direction: 'south' });
+  else if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') conn.reducers.move({ direction: 'west' });
+  else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') conn.reducers.move({ direction: 'east' });
+
+  // Take nearest
+  else if (e.key === 'e' || e.key === 'E') {
+    const agent = getMyAgent();
+    if (!agent) return;
+    for (const item of conn.db.item.iter()) {
+      if (!item.carrier && item.x === agent.x && item.y === agent.y && !hasTag(item.tags, 'blocking')) {
+        conn.reducers.take({ itemId: item.id });
+        break;
+      }
+    }
+  }
+
+  // Drop selected
+  else if (e.key === 'q' || e.key === 'Q') {
+    const inv = getInventory();
+    const item = inv[selectedSlot];
+    if (item) conn.reducers.drop({ itemId: item.id });
+  }
+
+  // Use mode
+  else if (e.key === 'f' || e.key === 'F') {
+    useMode = true;
+  }
+
+  // Select inventory slot
+  else if (e.key >= '1' && e.key <= '8') {
+    selectedSlot = parseInt(e.key) - 1;
+  }
+
+  // Chat
+  else if (e.key === 'Enter') {
+    chatOpen = true;
+    chatInput.style.display = 'block';
+    chatInput.focus();
+  }
+});
+
+chatInput.addEventListener('input', (e) => {
+  chatText = (e.target as HTMLInputElement).value;
+});
+
+// Mouse controls for camera (spectate mode)
+canvas.addEventListener('mousedown', (e) => {
+  if (!playing) {
+    dragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    camStartX = camX;
+    camStartY = camY;
+  }
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (dragging) {
+    camX = camStartX - (e.clientX - dragStartX) / zoom;
+    camY = camStartY - (e.clientY - dragStartY) / zoom;
+  }
+});
+canvas.addEventListener('mouseup', () => { dragging = false; });
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  zoom *= e.deltaY > 0 ? 0.9 : 1.1;
+  zoom = Math.max(0.25, Math.min(4, zoom));
+});
+
+// ============================================================
+// Watch for messages
+// ============================================================
+function setupCallbacks() {
+  if (!conn) return;
+
+  // Auto-detect returning player
+  conn.db.agent.onInsert((_ctx, agent) => {
+    if (myIdentity && agent.identity?.isEqual?.(myIdentity)) {
+      playing = true;
+    }
+  });
+
+  conn.db.message.onInsert((_ctx, msg) => {
+    floatingMessages.push({
+      text: `${msg.senderName}: ${msg.text}`,
+      name: msg.senderName,
+      x: msg.x,
+      y: msg.y,
+      time: Date.now(),
+    });
+  });
+
+}
+
+// ============================================================
+// Init
+// ============================================================
+window.addEventListener('load', () => {
+  connect();
+});

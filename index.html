@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClawWorld</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #111; overflow: hidden; font-family: monospace; color: #eee; }
+#game { display: block; width: 100vw; height: 100vh; }
+#play-btn {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  padding: 16px 48px; font-size: 24px; font-family: monospace;
+  background: #cc3333; color: white; border: 3px solid #ff6666;
+  cursor: pointer; border-radius: 8px; z-index: 100;
+}
+#play-btn:hover { background: #ff4444; }
+#chat-input {
+  display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  width: 400px; padding: 8px 16px; font-size: 16px; font-family: monospace;
+  background: rgba(0,0,0,0.8); color: white; border: 1px solid #666;
+  border-radius: 4px; z-index: 100;
+}
+#chat-box { position: fixed; bottom: 60px; left: 20px; z-index: 50; }
+#hud {
+  display: none; position: fixed; bottom: 20px; left: 20px;
+  background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 8px;
+  z-index: 50; min-width: 300px;
+}
+.stat { margin: 4px 0; font-size: 14px; }
+.bar { display: inline-block; width: 120px; height: 12px; background: #333; border-radius: 2px; vertical-align: middle; }
+.fill { display: block; height: 100%; border-radius: 2px; }
+.fill.hp { background: #22cc22; }
+.fill.hunger { background: #cc8822; }
+.inventory { display: flex; gap: 4px; margin-top: 8px; }
+.slot {
+  width: 40px; height: 50px; background: rgba(255,255,255,0.1);
+  border: 1px solid #555; border-radius: 4px; text-align: center;
+  font-size: 10px; padding: 2px; cursor: pointer; line-height: 1.2;
+}
+.slot.selected { border-color: #ffcc00; background: rgba(255,204,0,0.2); }
+.use-hint { color: #ffcc00; font-size: 12px; margin-top: 4px; }
+#leaderboard {
+  position: fixed; top: 20px; right: 20px;
+  background: rgba(0,0,0,0.7); padding: 12px; border-radius: 8px;
+  z-index: 50; font-size: 12px; min-width: 180px;
+}
+#leaderboard h3 { color: #ffcc00; margin-bottom: 6px; font-size: 14px; }
+#leaderboard div { margin: 2px 0; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<button id="play-btn">🦀 PLAY</button>
+<input id="chat-input" type="text" placeholder="Type message..." maxlength="500">
+<div id="chat-box"></div>
+<div id="hud"></div>
+<div id="leaderboard"></div>
+<script type="module" src="bundle.js"></script>
+</body>
+</html>
