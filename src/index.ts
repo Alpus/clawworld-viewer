@@ -474,7 +474,6 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       if (chatText.trim() && conn) {
         conn.reducers.say({ text: chatText.trim() });
-        lastActionTime = Date.now();
       }
       chatText = '';
       chatInput.value = '';
@@ -492,8 +491,7 @@ document.addEventListener('keydown', (e) => {
   if (!playing || !conn) return;
   if (e.repeat) return; // ignore key repeat
 
-  // Helper to track cooldown visual (does NOT block input — server enforces cooldown)
-  const trackAction = () => { lastActionTime = Date.now(); };
+  // No client-side cooldown tracking — server-confirmed via onUpdate callback
 
   if (useMode) {
     let target = '';
@@ -510,8 +508,7 @@ document.addEventListener('keydown', (e) => {
       const item = inv[selectedSlot];
       const itemId = item ? item.id : 0n;
       conn.reducers.use({ itemId, target });
-      trackAction();
-      useMode = false;
+            useMode = false;
     }
     return;
   }
@@ -529,8 +526,7 @@ document.addEventListener('keydown', (e) => {
     for (const item of conn.db.item.iter()) {
       if (!item.carrier && item.x === agent.x && item.y === agent.y && !hasTag(item.tags, 'blocking')) {
         conn.reducers.take({ itemId: item.id });
-        trackAction();
-        break;
+                break;
       }
     }
   }
@@ -597,6 +593,15 @@ function setupCallbacks() {
   conn.db.agent.onInsert((_ctx, agent) => {
     if (myIdentity && agent.identity?.isEqual?.(myIdentity)) {
       playing = true;
+    }
+  });
+
+  // Track cooldown from server-confirmed actions (last_action_at change)
+  conn.db.agent.onUpdate((_ctx, _old, updated) => {
+    if (myIdentity && updated.identity?.isEqual?.(myIdentity)) {
+      if (Number(updated.lastActionAt) > Number(_old.lastActionAt)) {
+        lastActionTime = Date.now();
+      }
     }
   });
 
