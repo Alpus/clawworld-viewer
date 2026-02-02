@@ -357,8 +357,9 @@ function drawHUD() {
   for (let i = 0; i < 8; i++) {
     const item = inv[i];
     const sel = i === selectedSlot ? ' selected' : '';
+    const icon = item ? getItemIcon(item.tags) : '';
     const label = item ? getItemName(item.tags) : '';
-    html += `<div class="slot${sel}" onclick="window.__selectSlot(${i})">${i + 1}<br>${label}</div>`;
+    html += `<div class="slot${sel}" onclick="window.__selectSlot(${i})" title="${label}">${i + 1}<br><span style="font-size:18px">${icon}</span></div>`;
   }
   html += `</div>`;
   if (useMode) html += `<div class="use-hint">USE: press W/A/S/D for direction, F for here, or Esc to cancel</div>`;
@@ -376,6 +377,18 @@ function drawHUD() {
   hud.style.display = 'block';
 }
 
+function getItemIcon(tags: string): string {
+  const m = parseTags(tags);
+  if (m.has('name:sword')) return '🗡️';
+  if (m.has('name:axe')) return '🪓';
+  if (m.has('name:berries')) return '🫐';
+  if (m.has('name:wood')) return '🪵';
+  if (m.has('name:berry_bush')) return '🌿';
+  if (m.has('name:tree')) return '🌲';
+  if (m.has('name:stone')) return '🪨';
+  return '❓';
+}
+
 function getItemName(tags: string): string {
   const m = parseTags(tags);
   for (const [k] of m) {
@@ -391,7 +404,7 @@ function drawLeaderboard() {
   const aliveBornAt = new Map<string, number>();
   for (const a of conn.db.agent.iter()) {
     const tags = parseTags(a.tags);
-    const born = getTagNum(tags, 'born_at');
+    const born = getTag(a.tags, 'born_at');
     if (born > 0) aliveBornAt.set(a.name, born);
   }
 
@@ -451,6 +464,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       if (chatText.trim() && conn) {
         conn.reducers.say({ text: chatText.trim() });
+        lastActionTime = Date.now();
       }
       chatText = '';
       chatInput.value = '';
@@ -468,6 +482,9 @@ document.addEventListener('keydown', (e) => {
   if (!playing || !conn) return;
   if (e.repeat) return; // ignore key repeat
 
+  // Helper to track cooldown visual (does NOT block input — server enforces cooldown)
+  const trackAction = () => { lastActionTime = Date.now(); };
+
   if (useMode) {
     let target = '';
     if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') target = 'north';
@@ -482,16 +499,17 @@ document.addEventListener('keydown', (e) => {
       const item = inv[selectedSlot];
       const itemId = item ? item.id : 0n;
       conn.reducers.use({ itemId, target });
+      trackAction();
       useMode = false;
     }
     return;
   }
 
   // Movement
-  if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') conn.reducers.move({ direction: 'north' });
-  else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') conn.reducers.move({ direction: 'south' });
-  else if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') conn.reducers.move({ direction: 'west' });
-  else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') conn.reducers.move({ direction: 'east' });
+  if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { conn.reducers.move({ direction: 'north' }); trackAction(); }
+  else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { conn.reducers.move({ direction: 'south' }); trackAction(); }
+  else if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') { conn.reducers.move({ direction: 'west' }); trackAction(); }
+  else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') { conn.reducers.move({ direction: 'east' }); trackAction(); }
 
   // Take nearest
   else if (e.key === 'e' || e.key === 'E') {
@@ -500,6 +518,7 @@ document.addEventListener('keydown', (e) => {
     for (const item of conn.db.item.iter()) {
       if (!item.carrier && item.x === agent.x && item.y === agent.y && !hasTag(item.tags, 'blocking')) {
         conn.reducers.take({ itemId: item.id });
+        trackAction();
         break;
       }
     }
@@ -509,7 +528,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'q' || e.key === 'Q') {
     const inv = getInventory();
     const item = inv[selectedSlot];
-    if (item) conn.reducers.drop({ itemId: item.id });
+    if (item) { conn.reducers.drop({ itemId: item.id }); trackAction(); }
   }
 
   // Use mode
@@ -571,6 +590,9 @@ function setupCallbacks() {
   });
 
   conn.db.message.onInsert((_ctx, msg) => {
+    // Only show messages sent within last 10 seconds (skip historical on reconnect)
+    const msgAge = Date.now() - Number(msg.sentAt);
+    if (msgAge > 10000) return;
     floatingMessages.push({
       text: `${msg.senderName}: ${msg.text}`,
       name: msg.senderName,
