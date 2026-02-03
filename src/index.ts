@@ -514,20 +514,25 @@ document.addEventListener('keydown', (e) => {
   }
 
   // Movement
-  if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { conn.reducers.move({ direction: 'north' }); trackAction(); }
-  else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { conn.reducers.move({ direction: 'south' }); trackAction(); }
-  else if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') { conn.reducers.move({ direction: 'west' }); trackAction(); }
-  else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') { conn.reducers.move({ direction: 'east' }); trackAction(); }
+  if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { conn.reducers.move({ direction: 'north' }); }
+  else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { conn.reducers.move({ direction: 'south' }); }
+  else if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') { conn.reducers.move({ direction: 'west' }); }
+  else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') { conn.reducers.move({ direction: 'east' }); }
 
-  // Take nearest
+  // Take newest takeable item on tile (berries before bushes)
   else if (e.key === 'e' || e.key === 'E') {
     const agent = getMyAgent();
     if (!agent) return;
+    const takeable: any[] = [];
     for (const item of conn.db.item.iter()) {
-      if (!item.carrier && item.x === agent.x && item.y === agent.y && !hasTag(item.tags, 'blocking')) {
-        conn.reducers.take({ itemId: item.id });
-                break;
+      if (!item.carrier && item.x === agent.x && item.y === agent.y
+          && !hasTag(item.tags, 'blocking') && !hasTag(item.tags, 'rooted')) {
+        takeable.push(item);
       }
+    }
+    takeable.sort((a, b) => Number(b.id - a.id)); // newest first
+    if (takeable.length > 0) {
+      conn.reducers.take({ itemId: takeable[0].id });
     }
   }
 
@@ -535,7 +540,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'q' || e.key === 'Q') {
     const inv = getInventory();
     const item = inv[selectedSlot];
-    if (item) { conn.reducers.drop({ itemId: item.id }); trackAction(); }
+    if (item) { conn.reducers.drop({ itemId: item.id }); }
   }
 
   // Use mode
