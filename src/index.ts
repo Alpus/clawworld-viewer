@@ -166,8 +166,10 @@ function ensureChunksLoaded(centerX: number, centerY: number) {
   if (!conn) return;
   const cx = Math.floor(centerX / CHUNK_SIZE);
   const cy = Math.floor(centerY / CHUNK_SIZE);
-  for (let dy = -2; dy <= 2; dy++) {
-    for (let dx = -2; dx <= 2; dx++) {
+  // Load 9x9 chunks (radius 4) to ensure world is always visible when zoomed out
+  const radius = 4;
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
       const key = `${cx + dx},${cy + dy}`;
       if (!loadedChunks.has(key)) {
         loadedChunks.add(key);
