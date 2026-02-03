@@ -122,9 +122,11 @@ function connect() {
               playing = true;
               playBtn.style.display = 'none';
               foundAgent = true;
-              // Show quit button for returning players
+              // Show quit button and controls for returning players
               const quitBtn = document.getElementById('quit-btn');
               if (quitBtn) quitBtn.style.display = 'block';
+              const controlsHelp = document.getElementById('controls-help');
+              if (controlsHelp) controlsHelp.style.display = 'block';
               console.log('Found existing agent:', a.name);
               break;
             }
