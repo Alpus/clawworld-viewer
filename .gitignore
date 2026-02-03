@@ -3,3 +3,7 @@
 node_modules/
 dist/
 .playwright-mcp/
+
+# Local Netlify folder
+.netlify
+.netlify
