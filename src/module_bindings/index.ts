@@ -34,10 +34,14 @@ import {
 // Import and reexport all reducer arg types
 import GenerateChunkReducer from "./generate_chunk_reducer";
 export { GenerateChunkReducer };
+import EnableTestModeReducer from "./enable_test_mode_reducer";
+export { EnableTestModeReducer };
 import SetCooldownReducer from "./set_cooldown_reducer";
 export { SetCooldownReducer };
 import TeleportReducer from "./teleport_reducer";
 export { TeleportReducer };
+import SetWorldruleChanceReducer from "./set_worldrule_chance_reducer";
+export { SetWorldruleChanceReducer };
 import SpawnTestItemReducer from "./spawn_test_item_reducer";
 export { SpawnTestItemReducer };
 import RegisterReducer from "./register_reducer";
@@ -58,6 +62,8 @@ export { HeartbeatReducer };
 // Import and reexport all procedure arg types
 
 // Import and reexport all table handle types
+import ActionlogRow from "./actionlog_table";
+export { ActionlogRow };
 import AgentRow from "./agent_table";
 export { AgentRow };
 import HeartbeattimerRow from "./heartbeattimer_table";
@@ -78,10 +84,14 @@ import WorldruleRow from "./worldrule_table";
 export { WorldruleRow };
 
 // Import and reexport all types
+import Actionlog from "./actionlog_type";
+export { Actionlog };
 import Agent from "./agent_type";
 export { Agent };
 import Drop from "./drop_type";
 export { Drop };
+import EnableTestMode from "./enable_test_mode_type";
+export { EnableTestMode };
 import GenerateChunk from "./generate_chunk_type";
 export { GenerateChunk };
 import Heartbeat from "./heartbeat_type";
@@ -108,6 +118,8 @@ import Say from "./say_type";
 export { Say };
 import SetCooldown from "./set_cooldown_type";
 export { SetCooldown };
+import SetWorldruleChance from "./set_worldrule_chance_type";
+export { SetWorldruleChance };
 import SpawnTestItem from "./spawn_test_item_type";
 export { SpawnTestItem };
 import Take from "./take_type";
@@ -123,6 +135,17 @@ export { Worldrule };
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema(
+  __table({
+    name: 'actionlog',
+    indexes: [
+      { name: 'id', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'actionlog_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, ActionlogRow),
   __table({
     name: 'agent',
     indexes: [
@@ -239,8 +262,10 @@ const tablesSchema = __schema(
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("generate_chunk", GenerateChunkReducer),
+  __reducerSchema("enable_test_mode", EnableTestModeReducer),
   __reducerSchema("set_cooldown", SetCooldownReducer),
   __reducerSchema("teleport", TeleportReducer),
+  __reducerSchema("set_worldrule_chance", SetWorldruleChanceReducer),
   __reducerSchema("spawn_test_item", SpawnTestItemReducer),
   __reducerSchema("register", RegisterReducer),
   __reducerSchema("move", MoveReducer),
