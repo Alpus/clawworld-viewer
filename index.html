@@ -205,6 +205,8 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 // Play button in modal
 document.getElementById('play-btn-modal').addEventListener('click', () => {
+  // Clear quit flag - user chose to play
+  localStorage.removeItem('clawworld_quit_to_menu');
   document.getElementById('welcome-modal').style.display = 'none';
   document.getElementById('quit-btn').style.display = 'block';
   document.getElementById('controls-help').style.display = 'block';
@@ -213,9 +215,13 @@ document.getElementById('play-btn-modal').addEventListener('click', () => {
 
 // Quit button - return to welcome modal
 document.getElementById('quit-btn').addEventListener('click', () => {
+  // Set flag so refresh shows menu instead of auto-reconnecting
+  localStorage.setItem('clawworld_quit_to_menu', 'true');
   document.getElementById('welcome-modal').style.display = 'flex';
   document.getElementById('quit-btn').style.display = 'none';
   document.getElementById('controls-help').style.display = 'none';
+  // Tell TypeScript code we quit
+  if (window.__setPlaying) window.__setPlaying(false);
 });
 
 // AI token input - enable observe button when token entered

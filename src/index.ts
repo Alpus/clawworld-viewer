@@ -116,9 +116,8 @@ function connect() {
       _conn.subscriptionBuilder()
         .onApplied(() => {
           console.log('Subscribed to views');
-          // Hide loading screen
-          const loadingScreen = document.getElementById('loading-screen');
-          if (loadingScreen) loadingScreen.style.display = 'none';
+          // NOTE: Don't hide loading screen here - it's hidden in render() when tiles are available
+          // This prevents grey screen flash while chunks are being generated
 
           // Check for existing agent via my_agent view
           let foundAgent = false;
@@ -246,6 +245,16 @@ function render() {
     camX = 0;
     camY = 0;
     ensureChunksLoaded(0, 0);
+  }
+
+  // Hide loading screen once we have tiles to render (prevents grey flash)
+  const loadingScreen = document.getElementById('loading-screen');
+  if (loadingScreen && loadingScreen.style.display !== 'none') {
+    let hasTiles = false;
+    for (const _ of conn.db.nearbyTiles.iter()) { hasTiles = true; break; }
+    if (hasTiles) {
+      loadingScreen.style.display = 'none';
+    }
   }
 
   ctx2d.save();
@@ -1132,13 +1141,29 @@ function setupCallbacks() {
   if (!conn) return;
 
   // My agent view callbacks
-  // NOTE: Views API fires onDelete+onInsert on EVERY re-evaluation, not just actual changes.
-  // Death detection is done via frame-counting in checkMyAgentFromView() instead.
+  // CRITICAL: Views API fires onDelete+onInsert on EVERY change, NOT onUpdate!
+  // So we detect "updates" by comparing to cached state in onInsert.
+  // Death detection is done via frame-counting in checkMyAgentFromView().
   conn.db.myAgent.onInsert((_ctx, agent) => {
     console.log('myAgent view onInsert:', agent.name);
     deathFrameCount = 0; // Reset death counter - agent exists
+
+    // Detect "update" by comparing to previous cached state
+    // Views API fires delete+insert instead of update, so we handle updates here
+    if (myAgentCache) {
+      const oldLastAction = Number(myAgentCache.lastActionAt);
+      const newLastAction = Number(agent.lastActionAt);
+      if (newLastAction > oldLastAction) {
+        console.log('Action detected via insert (lastActionAt changed)');
+        lastActionTime = Date.now();
+        actionEffect = { type: 'success', x: agent.x, y: agent.y, time: Date.now() };
+      }
+    }
+
     myAgentCache = agent;
     playing = true;
+    // Clear quitToMenu flag since we're playing
+    localStorage.removeItem('clawworld_quit_to_menu');
     playBtn.style.display = 'none';
     const quitBtn = document.getElementById('quit-btn');
     if (quitBtn) quitBtn.style.display = 'block';
@@ -1146,6 +1171,8 @@ function setupCallbacks() {
     if (controlsHelp) controlsHelp.style.display = 'block';
   });
 
+  // NOTE: Views API rarely fires onUpdate - it uses delete+insert instead.
+  // Keep this for compatibility but primary update detection is in onInsert.
   conn.db.myAgent.onUpdate((_ctx, _old, updated) => {
     console.log('myAgent view onUpdate');
     deathFrameCount = 0; // Reset death counter - agent exists
