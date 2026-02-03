@@ -81,10 +81,22 @@ function hasTag(tags: string, t: string): boolean { return parseTags(tags).has(t
 // ============================================================
 // Connection
 // ============================================================
+
+// Server URL: use ?server=local for localhost, otherwise maincloud
+function getServerUri(): string {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('server') === 'local') {
+    return 'ws://localhost:3000';
+  }
+  return 'wss://maincloud.spacetimedb.com';
+}
+
 function connect() {
   const savedToken = localStorage.getItem('clawworld_token') || undefined;
+  const serverUri = getServerUri();
+  console.log('Connecting to:', serverUri);
   conn = DbConnection.builder()
-    .withUri('ws://localhost:3000')
+    .withUri(serverUri)
     .withModuleName('clawworld')
     .withToken(savedToken)
     .onConnect((_conn, identity, token) => {
