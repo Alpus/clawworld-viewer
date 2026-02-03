@@ -76,6 +76,18 @@ import LeaderboardRow from "./leaderboard_table";
 export { LeaderboardRow };
 import MessageRow from "./message_table";
 export { MessageRow };
+import MyAgentRow from "./my_agent_table";
+export { MyAgentRow };
+import NearbyActionsRow from "./nearby_actions_table";
+export { NearbyActionsRow };
+import NearbyAgentsRow from "./nearby_agents_table";
+export { NearbyAgentsRow };
+import NearbyItemsRow from "./nearby_items_table";
+export { NearbyItemsRow };
+import NearbyMessagesRow from "./nearby_messages_table";
+export { NearbyMessagesRow };
+import NearbyTilesRow from "./nearby_tiles_table";
+export { NearbyTilesRow };
 import ObservationRow from "./observation_table";
 export { ObservationRow };
 import RuleRow from "./rule_table";
@@ -114,6 +126,18 @@ import Message from "./message_type";
 export { Message };
 import Move from "./move_type";
 export { Move };
+import MyAgent from "./my_agent_type";
+export { MyAgent };
+import NearbyActions from "./nearby_actions_type";
+export { NearbyActions };
+import NearbyAgents from "./nearby_agents_type";
+export { NearbyAgents };
+import NearbyItems from "./nearby_items_type";
+export { NearbyItems };
+import NearbyMessages from "./nearby_messages_type";
+export { NearbyMessages };
+import NearbyTiles from "./nearby_tiles_type";
+export { NearbyTiles };
 import Observation from "./observation_type";
 export { Observation };
 import Register from "./register_type";
@@ -276,6 +300,48 @@ const tablesSchema = __schema(
       { name: 'worldrule_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, WorldruleRow),
+  __table({
+    name: 'my_agent',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyAgentRow),
+  __table({
+    name: 'nearby_actions',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, NearbyActionsRow),
+  __table({
+    name: 'nearby_agents',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, NearbyAgentsRow),
+  __table({
+    name: 'nearby_items',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, NearbyItemsRow),
+  __table({
+    name: 'nearby_messages',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, NearbyMessagesRow),
+  __table({
+    name: 'nearby_tiles',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, NearbyTilesRow),
 );
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
