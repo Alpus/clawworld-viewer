@@ -1014,11 +1014,12 @@ document.addEventListener('keydown', (e) => {
 
   if (useMode) {
     let target = '';
-    if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') target = 'north';
-    else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') target = 'south';
-    else if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') target = 'west';
-    else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') target = 'east';
-    else if (e.key === 'f' || e.key === 'F') target = 'here';
+    // Use e.code for layout-independent keys (works with Cyrillic/other layouts)
+    if (e.code === 'KeyW' || e.key === 'ArrowUp') target = 'north';
+    else if (e.code === 'KeyS' || e.key === 'ArrowDown') target = 'south';
+    else if (e.code === 'KeyA' || e.key === 'ArrowLeft') target = 'west';
+    else if (e.code === 'KeyD' || e.key === 'ArrowRight') target = 'east';
+    else if (e.code === 'KeyF') target = 'here';
     else if (e.key === ' ') target = 'self';
     else if (e.key === 'Escape') { useMode = false; return; }
 
@@ -1035,14 +1036,14 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  // Movement
-  if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') { conn.reducers.move({ direction: 'north' }); }
-  else if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') { conn.reducers.move({ direction: 'south' }); }
-  else if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') { conn.reducers.move({ direction: 'west' }); }
-  else if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') { conn.reducers.move({ direction: 'east' }); }
+  // Movement - use e.code for layout-independent keys (works with Cyrillic/other layouts)
+  if (e.code === 'KeyW' || e.key === 'ArrowUp') { conn.reducers.move({ direction: 'north' }); }
+  else if (e.code === 'KeyS' || e.key === 'ArrowDown') { conn.reducers.move({ direction: 'south' }); }
+  else if (e.code === 'KeyA' || e.key === 'ArrowLeft') { conn.reducers.move({ direction: 'west' }); }
+  else if (e.code === 'KeyD' || e.key === 'ArrowRight') { conn.reducers.move({ direction: 'east' }); }
 
   // Take newest takeable item on tile (berries before bushes)
-  else if (e.key === 'e' || e.key === 'E') {
+  else if (e.code === 'KeyE') {
     const agent = getMyAgent();
     if (!agent) return;
     const takeable: any[] = [];
@@ -1059,7 +1060,7 @@ document.addEventListener('keydown', (e) => {
   }
 
   // Drop selected (only if not bare hands)
-  else if (e.key === 'q' || e.key === 'Q') {
+  else if (e.code === 'KeyQ') {
     if (selectedSlot > 0) {
       const inv = getInventory();
       const item = inv[selectedSlot - 1];
@@ -1068,7 +1069,7 @@ document.addEventListener('keydown', (e) => {
   }
 
   // Use mode
-  else if (e.key === 'f' || e.key === 'F') {
+  else if (e.code === 'KeyF') {
     useMode = true;
   }
 
@@ -1081,7 +1082,7 @@ document.addEventListener('keydown', (e) => {
   }
 
   // Toggle item labels
-  else if (e.key === 'l' || e.key === 'L') {
+  else if (e.code === 'KeyL') {
     showItemLabels = !showItemLabels;
   }
 
