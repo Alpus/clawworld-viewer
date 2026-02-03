@@ -162,6 +162,9 @@ function render() {
     camX = agent.x * TILE_SIZE + TILE_SIZE / 2;
     camY = agent.y * TILE_SIZE + TILE_SIZE / 2;
     ensureChunksLoaded(agent.x, agent.y);
+  } else if (playing) {
+    // Agent not yet loaded after register - load chunks around origin
+    ensureChunksLoaded(0, 0);
   }
 
   ctx2d.save();
