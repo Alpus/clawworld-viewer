@@ -193,11 +193,32 @@ function render() {
     ctx2d.strokeRect(tile.x * TILE_SIZE, tile.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
 
-  // Draw ground items
+  // Draw ground items (grouped by position for stack offset)
+  const groundItems: any[] = [];
   for (const item of conn.db.item.iter()) {
     if (item.carrier) continue;
     if (item.x < minTX || item.x > maxTX || item.y < minTY || item.y > maxTY) continue;
-    drawItem(item);
+    groundItems.push(item);
+  }
+
+  // Group items by position
+  const itemStacks = new Map<string, any[]>();
+  for (const item of groundItems) {
+    const key = `${item.x},${item.y}`;
+    if (!itemStacks.has(key)) itemStacks.set(key, []);
+    itemStacks.get(key)!.push(item);
+  }
+
+  // Sort each stack by ID (lower ID = bottom of stack, drawn first)
+  for (const [_, stack] of itemStacks) {
+    stack.sort((a, b) => Number(a.id) - Number(b.id));
+  }
+
+  // Draw stacks with offset
+  for (const [_, stack] of itemStacks) {
+    for (let i = 0; i < stack.length; i++) {
+      drawItem(stack[i], i, stack.length);
+    }
   }
 
   // Draw agents
@@ -235,9 +256,15 @@ function render() {
   requestAnimationFrame(render);
 }
 
-function drawItem(item: any) {
-  const cx = item.x * TILE_SIZE + TILE_SIZE / 2;
-  const cy = item.y * TILE_SIZE + TILE_SIZE / 2;
+function drawItem(item: any, stackIndex: number = 0, stackSize: number = 1) {
+  // Stack offset: each item in stack is offset slightly up-left
+  // Bottom item (index 0) is at base, top item (highest index) is offset most
+  const stackOffset = 2; // pixels per stack level
+  const offsetX = stackIndex * stackOffset;
+  const offsetY = -stackIndex * stackOffset; // negative = up
+
+  const cx = item.x * TILE_SIZE + TILE_SIZE / 2 + offsetX;
+  const cy = item.y * TILE_SIZE + TILE_SIZE / 2 + offsetY;
   const tags = parseTags(item.tags);
 
   if (tags.has('name:tree')) {
@@ -280,6 +307,119 @@ function drawItem(item: any) {
   } else if (tags.has('name:wood')) {
     ctx2d.fillStyle = '#8b6914';
     ctx2d.fillRect(cx - 6, cy - 2, 12, 5);
+  } else if (tags.has('name:pickaxe')) {
+    // Pickaxe: brown handle + gray head
+    ctx2d.fillStyle = '#8b6914';
+    ctx2d.fillRect(cx - 1, cy - 6, 3, 14);
+    ctx2d.fillStyle = '#606060';
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx - 6, cy - 6);
+    ctx2d.lineTo(cx + 6, cy - 6);
+    ctx2d.lineTo(cx + 4, cy - 2);
+    ctx2d.lineTo(cx - 4, cy - 2);
+    ctx2d.closePath();
+    ctx2d.fill();
+  } else if (tags.has('name:flint_steel')) {
+    // Flint + steel: gray flint + dark metal
+    ctx2d.fillStyle = '#505050';
+    ctx2d.fillRect(cx - 5, cy - 2, 6, 5);
+    ctx2d.fillStyle = '#333';
+    ctx2d.fillRect(cx + 1, cy - 3, 4, 7);
+  } else if (tags.has('name:bandage')) {
+    // Bandage: white roll with red cross
+    ctx2d.fillStyle = '#f0f0f0';
+    ctx2d.fillRect(cx - 5, cy - 4, 10, 8);
+    ctx2d.fillStyle = '#cc2222';
+    ctx2d.fillRect(cx - 1, cy - 3, 2, 6);
+    ctx2d.fillRect(cx - 3, cy - 1, 6, 2);
+  } else if (tags.has('name:torch')) {
+    // Torch: brown stick, optionally with flame
+    ctx2d.fillStyle = '#6b4423';
+    ctx2d.fillRect(cx - 2, cy - 2, 4, 10);
+    if (tags.has('lit')) {
+      // Flame
+      ctx2d.fillStyle = '#ff6600';
+      ctx2d.beginPath();
+      ctx2d.moveTo(cx, cy - 8);
+      ctx2d.lineTo(cx - 4, cy - 2);
+      ctx2d.lineTo(cx + 4, cy - 2);
+      ctx2d.closePath();
+      ctx2d.fill();
+      ctx2d.fillStyle = '#ffcc00';
+      ctx2d.beginPath();
+      ctx2d.arc(cx, cy - 4, 3, 0, Math.PI * 2);
+      ctx2d.fill();
+    }
+  } else if (tags.has('name:poison_mushroom')) {
+    // Poison mushroom: purple cap with white spots
+    ctx2d.fillStyle = '#6a0dad';
+    ctx2d.beginPath();
+    ctx2d.arc(cx, cy - 2, 7, Math.PI, 0);
+    ctx2d.fill();
+    ctx2d.fillStyle = '#e0e0e0';
+    ctx2d.fillRect(cx - 2, cy - 2, 4, 8);
+    // White spots
+    ctx2d.fillStyle = 'white';
+    ctx2d.beginPath(); ctx2d.arc(cx - 3, cy - 5, 1.5, 0, Math.PI * 2); ctx2d.fill();
+    ctx2d.beginPath(); ctx2d.arc(cx + 2, cy - 4, 1.5, 0, Math.PI * 2); ctx2d.fill();
+  } else if (tags.has('name:rock')) {
+    // Rock: large gray boulder
+    ctx2d.fillStyle = '#707070';
+    ctx2d.beginPath();
+    ctx2d.ellipse(cx, cy, 10, 8, 0, 0, Math.PI * 2);
+    ctx2d.fill();
+    ctx2d.fillStyle = '#505050';
+    ctx2d.beginPath();
+    ctx2d.ellipse(cx + 2, cy + 2, 6, 4, 0.3, 0, Math.PI * 2);
+    ctx2d.fill();
+  } else if (tags.has('name:stone')) {
+    // Stone (mined): small gray rock
+    ctx2d.fillStyle = '#808080';
+    ctx2d.beginPath();
+    ctx2d.ellipse(cx, cy, 5, 4, 0, 0, Math.PI * 2);
+    ctx2d.fill();
+  } else if (tags.has('name:wall')) {
+    // Wall: brick pattern
+    ctx2d.fillStyle = '#8b4513';
+    ctx2d.fillRect(cx - 10, cy - 10, 20, 20);
+    ctx2d.strokeStyle = '#5a2d0a';
+    ctx2d.lineWidth = 1;
+    // Brick lines
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx - 10, cy - 3); ctx2d.lineTo(cx + 10, cy - 3);
+    ctx2d.moveTo(cx - 10, cy + 4); ctx2d.lineTo(cx + 10, cy + 4);
+    ctx2d.moveTo(cx, cy - 10); ctx2d.lineTo(cx, cy - 3);
+    ctx2d.moveTo(cx - 5, cy - 3); ctx2d.lineTo(cx - 5, cy + 4);
+    ctx2d.moveTo(cx + 5, cy - 3); ctx2d.lineTo(cx + 5, cy + 4);
+    ctx2d.moveTo(cx, cy + 4); ctx2d.lineTo(cx, cy + 10);
+    ctx2d.stroke();
+  } else if (tags.has('name:wall_kit')) {
+    // Wall kit: small brick icon
+    ctx2d.fillStyle = '#a0522d';
+    ctx2d.fillRect(cx - 5, cy - 4, 10, 8);
+    ctx2d.strokeStyle = '#5a2d0a';
+    ctx2d.lineWidth = 1;
+    ctx2d.strokeRect(cx - 5, cy - 4, 10, 8);
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx - 5, cy); ctx2d.lineTo(cx + 5, cy);
+    ctx2d.moveTo(cx, cy - 4); ctx2d.lineTo(cx, cy);
+    ctx2d.stroke();
+  } else if (tags.has('name:fire') || tags.has('burning')) {
+    // Fire: animated flame
+    ctx2d.fillStyle = '#ff4400';
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx, cy - 10);
+    ctx2d.quadraticCurveTo(cx - 8, cy, cx - 5, cy + 6);
+    ctx2d.lineTo(cx + 5, cy + 6);
+    ctx2d.quadraticCurveTo(cx + 8, cy, cx, cy - 10);
+    ctx2d.fill();
+    ctx2d.fillStyle = '#ffcc00';
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx, cy - 5);
+    ctx2d.quadraticCurveTo(cx - 4, cy + 2, cx - 2, cy + 4);
+    ctx2d.lineTo(cx + 2, cy + 4);
+    ctx2d.quadraticCurveTo(cx + 4, cy + 2, cx, cy - 5);
+    ctx2d.fill();
   } else {
     ctx2d.fillStyle = '#ffff00';
     ctx2d.font = '10px monospace';
@@ -391,11 +531,20 @@ function getItemIcon(tags: string): string {
   const m = parseTags(tags);
   if (m.has('name:sword')) return '🗡️';
   if (m.has('name:axe')) return '🪓';
+  if (m.has('name:pickaxe')) return '⛏️';
+  if (m.has('name:flint_steel')) return '🔥';
+  if (m.has('name:bandage')) return '🩹';
+  if (m.has('name:torch')) return '🔦';
   if (m.has('name:berries')) return '🫐';
   if (m.has('name:wood')) return '🪵';
   if (m.has('name:berry_bush')) return '🌿';
   if (m.has('name:tree')) return '🌲';
   if (m.has('name:stone')) return '🪨';
+  if (m.has('name:rock')) return '🪨';
+  if (m.has('name:poison_mushroom')) return '🍄';
+  if (m.has('name:wall_kit')) return '🧱';
+  if (m.has('name:wall')) return '🧱';
+  if (m.has('name:fire')) return '🔥';
   return '❓';
 }
 
