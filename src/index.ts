@@ -499,7 +499,7 @@ function drawHUD() {
     const sel = i === selectedSlot ? ' selected' : '';
     const icon = item ? getItemIcon(item.tags) : '';
     const label = item ? getItemName(item.tags) : '';
-    html += `<div class="slot${sel}" onclick="window.__selectSlot(${i})" title="${label}">${i + 1}<br><span style="font-size:18px">${icon}</span></div>`;
+    html += `<div class="slot${sel}" onclick="window.__selectSlot(${i})" title="${label}">${i + 1}<br>${icon}</div>`;
   }
   html += `</div>`;
   // Selected item info
@@ -527,25 +527,194 @@ function drawHUD() {
   hud.style.display = 'block';
 }
 
-function getItemIcon(tags: string): string {
+// Icon cache for HUD (data URLs)
+const iconCache = new Map<string, string>();
+const ICON_SIZE = 24;
+
+function getItemIconDataUrl(tags: string): string {
+  // Check cache first
+  const cacheKey = tags;
+  if (iconCache.has(cacheKey)) return iconCache.get(cacheKey)!;
+
+  // Create offscreen canvas
+  const offscreen = document.createElement('canvas');
+  offscreen.width = ICON_SIZE;
+  offscreen.height = ICON_SIZE;
+  const octx = offscreen.getContext('2d')!;
+
+  // Draw icon centered
+  const cx = ICON_SIZE / 2;
+  const cy = ICON_SIZE / 2;
+  const scale = 0.8; // Scale down slightly to fit
+
+  octx.save();
+  octx.translate(cx, cy);
+  octx.scale(scale, scale);
+  octx.translate(-cx, -cy);
+
+  drawItemIconAt(octx, cx, cy, tags);
+
+  octx.restore();
+
+  // Convert to data URL and cache
+  const dataUrl = offscreen.toDataURL('image/png');
+  iconCache.set(cacheKey, dataUrl);
+  return dataUrl;
+}
+
+function drawItemIconAt(ctx: CanvasRenderingContext2D, cx: number, cy: number, tags: string) {
   const m = parseTags(tags);
-  if (m.has('name:sword')) return '🗡️';
-  if (m.has('name:axe')) return '🪓';
-  if (m.has('name:pickaxe')) return '⛏️';
-  if (m.has('name:flint_steel')) return '🔥';
-  if (m.has('name:bandage')) return '🩹';
-  if (m.has('name:torch')) return '🔦';
-  if (m.has('name:berries')) return '🫐';
-  if (m.has('name:wood')) return '🪵';
-  if (m.has('name:berry_bush')) return '🌿';
-  if (m.has('name:tree')) return '🌲';
-  if (m.has('name:stone')) return '🪨';
-  if (m.has('name:rock')) return '🪨';
-  if (m.has('name:poison_mushroom')) return '🍄';
-  if (m.has('name:wall_kit')) return '🧱';
-  if (m.has('name:wall')) return '🧱';
-  if (m.has('name:fire')) return '🔥';
-  return '❓';
+
+  if (m.has('name:tree')) {
+    ctx.fillStyle = '#2d5a1e';
+    ctx.beginPath();
+    ctx.arc(cx, cy - 4, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#5c3a1e';
+    ctx.fillRect(cx - 2, cy + 2, 4, 10);
+  } else if (m.has('name:berry_bush')) {
+    ctx.fillStyle = '#3a8a2e';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+    ctx.fill();
+    if (m.has('harvestable')) {
+      for (const [ox, oy] of [[-3,-3],[3,-2],[0,3],[4,1]]) {
+        ctx.fillStyle = '#cc2222';
+        ctx.beginPath();
+        ctx.arc(cx + ox, cy + oy, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  } else if (m.has('name:sword')) {
+    ctx.fillStyle = '#c0c0c0';
+    ctx.fillRect(cx - 1, cy - 8, 3, 16);
+    ctx.fillStyle = '#8b6914';
+    ctx.fillRect(cx - 4, cy + 4, 9, 3);
+  } else if (m.has('name:axe')) {
+    ctx.fillStyle = '#8b6914';
+    ctx.fillRect(cx - 1, cy - 6, 3, 14);
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(cx + 2, cy - 6, 6, 8);
+  } else if (m.has('name:berries')) {
+    ctx.fillStyle = '#cc2222';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (m.has('name:wood')) {
+    ctx.fillStyle = '#8b6914';
+    ctx.fillRect(cx - 6, cy - 2, 12, 5);
+  } else if (m.has('name:pickaxe')) {
+    ctx.fillStyle = '#8b6914';
+    ctx.fillRect(cx - 1, cy - 6, 3, 14);
+    ctx.fillStyle = '#606060';
+    ctx.beginPath();
+    ctx.moveTo(cx - 6, cy - 6);
+    ctx.lineTo(cx + 6, cy - 6);
+    ctx.lineTo(cx + 4, cy - 2);
+    ctx.lineTo(cx - 4, cy - 2);
+    ctx.closePath();
+    ctx.fill();
+  } else if (m.has('name:flint_steel')) {
+    ctx.fillStyle = '#505050';
+    ctx.fillRect(cx - 5, cy - 2, 6, 5);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(cx + 1, cy - 3, 4, 7);
+  } else if (m.has('name:bandage')) {
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fillRect(cx - 5, cy - 4, 10, 8);
+    ctx.fillStyle = '#cc2222';
+    ctx.fillRect(cx - 1, cy - 3, 2, 6);
+    ctx.fillRect(cx - 3, cy - 1, 6, 2);
+  } else if (m.has('name:torch')) {
+    ctx.fillStyle = '#6b4423';
+    ctx.fillRect(cx - 2, cy - 2, 4, 10);
+    if (m.has('lit')) {
+      ctx.fillStyle = '#ff6600';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 8);
+      ctx.lineTo(cx - 4, cy - 2);
+      ctx.lineTo(cx + 4, cy - 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 4, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (m.has('name:poison_mushroom')) {
+    ctx.fillStyle = '#6a0dad';
+    ctx.beginPath();
+    ctx.arc(cx, cy - 2, 7, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = '#e0e0e0';
+    ctx.fillRect(cx - 2, cy - 2, 4, 8);
+    ctx.fillStyle = 'white';
+    ctx.beginPath(); ctx.arc(cx - 3, cy - 5, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 2, cy - 4, 1.5, 0, Math.PI * 2); ctx.fill();
+  } else if (m.has('name:rock')) {
+    ctx.fillStyle = '#707070';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 10, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#505050';
+    ctx.beginPath();
+    ctx.ellipse(cx + 2, cy + 2, 6, 4, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (m.has('name:stone')) {
+    ctx.fillStyle = '#808080';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 5, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (m.has('name:wall')) {
+    ctx.fillStyle = '#8b4513';
+    ctx.fillRect(cx - 10, cy - 10, 20, 20);
+    ctx.strokeStyle = '#5a2d0a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - 10, cy - 3); ctx.lineTo(cx + 10, cy - 3);
+    ctx.moveTo(cx - 10, cy + 4); ctx.lineTo(cx + 10, cy + 4);
+    ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy - 3);
+    ctx.moveTo(cx - 5, cy - 3); ctx.lineTo(cx - 5, cy + 4);
+    ctx.moveTo(cx + 5, cy - 3); ctx.lineTo(cx + 5, cy + 4);
+    ctx.moveTo(cx, cy + 4); ctx.lineTo(cx, cy + 10);
+    ctx.stroke();
+  } else if (m.has('name:wall_kit')) {
+    ctx.fillStyle = '#a0522d';
+    ctx.fillRect(cx - 5, cy - 4, 10, 8);
+    ctx.strokeStyle = '#5a2d0a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - 5, cy - 4, 10, 8);
+    ctx.beginPath();
+    ctx.moveTo(cx - 5, cy); ctx.lineTo(cx + 5, cy);
+    ctx.moveTo(cx, cy - 4); ctx.lineTo(cx, cy);
+    ctx.stroke();
+  } else if (m.has('name:fire') || m.has('burning')) {
+    ctx.fillStyle = '#ff4400';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 10);
+    ctx.quadraticCurveTo(cx - 8, cy, cx - 5, cy + 6);
+    ctx.lineTo(cx + 5, cy + 6);
+    ctx.quadraticCurveTo(cx + 8, cy, cx, cy - 10);
+    ctx.fill();
+    ctx.fillStyle = '#ffcc00';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 5);
+    ctx.quadraticCurveTo(cx - 4, cy + 2, cx - 2, cy + 4);
+    ctx.lineTo(cx + 2, cy + 4);
+    ctx.quadraticCurveTo(cx + 4, cy + 2, cx, cy - 5);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = '#ffff00';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('?', cx, cy + 4);
+  }
+}
+
+function getItemIcon(tags: string): string {
+  // Return HTML img tag with canvas-rendered icon
+  const dataUrl = getItemIconDataUrl(tags);
+  return `<img src="${dataUrl}" width="${ICON_SIZE}" height="${ICON_SIZE}" style="vertical-align:middle">`;
 }
 
 function getItemName(tags: string): string {
