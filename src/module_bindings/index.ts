@@ -58,6 +58,8 @@ import UseReducer from "./use_reducer";
 export { UseReducer };
 import HeartbeatReducer from "./heartbeat_reducer";
 export { HeartbeatReducer };
+import GetObservationReducer from "./get_observation_reducer";
+export { GetObservationReducer };
 
 // Import and reexport all procedure arg types
 
@@ -74,6 +76,8 @@ import LeaderboardRow from "./leaderboard_table";
 export { LeaderboardRow };
 import MessageRow from "./message_table";
 export { MessageRow };
+import ObservationRow from "./observation_table";
+export { ObservationRow };
 import RuleRow from "./rule_table";
 export { RuleRow };
 import RuntimeconfigRow from "./runtimeconfig_table";
@@ -94,6 +98,8 @@ import EnableTestMode from "./enable_test_mode_type";
 export { EnableTestMode };
 import GenerateChunk from "./generate_chunk_type";
 export { GenerateChunk };
+import GetObservation from "./get_observation_type";
+export { GetObservation };
 import Heartbeat from "./heartbeat_type";
 export { Heartbeat };
 import Heartbeattimer from "./heartbeattimer_type";
@@ -108,6 +114,8 @@ import Message from "./message_type";
 export { Message };
 import Move from "./move_type";
 export { Move };
+import Observation from "./observation_type";
+export { Observation };
 import Register from "./register_type";
 export { Register };
 import Rule from "./rule_type";
@@ -210,6 +218,17 @@ const tablesSchema = __schema(
     ],
   }, MessageRow),
   __table({
+    name: 'observation',
+    indexes: [
+      { name: 'identity', algorithm: 'btree', columns: [
+        'identity',
+      ] },
+    ],
+    constraints: [
+      { name: 'observation_identity_key', constraint: 'unique', columns: ['identity'] },
+    ],
+  }, ObservationRow),
+  __table({
     name: 'rule',
     indexes: [
       { name: 'id', algorithm: 'btree', columns: [
@@ -274,6 +293,7 @@ const reducersSchema = __reducers(
   __reducerSchema("drop", DropReducer),
   __reducerSchema("use", UseReducer),
   __reducerSchema("heartbeat", HeartbeatReducer),
+  __reducerSchema("get_observation", GetObservationReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
