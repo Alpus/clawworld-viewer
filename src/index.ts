@@ -144,6 +144,9 @@ function connect() {
           if (!foundAgent || quitToMenu) {
             const modal = document.getElementById('welcome-modal');
             if (modal) modal.style.display = 'flex';
+            // Hide loading screen - we're connected but no agent
+            const loadingScreen = document.getElementById('loading-screen');
+            if (loadingScreen) loadingScreen.style.display = 'none';
           } else {
             // Auto-resume playing
             playing = true;
