@@ -129,6 +129,13 @@ function connect() {
           // Check if user previously quit to menu (don't auto-resume)
           const quitToMenu = localStorage.getItem('clawworld_quit_to_menu') === 'true';
 
+          // Auto-clear stale token: connected with saved token but no agent exists
+          // This happens when agent died and token is from previous session
+          if (!foundAgent && savedToken) {
+            console.log('No agent found with saved token - clearing token for fresh start');
+            localStorage.removeItem('clawworld_token');
+          }
+
           // Show welcome modal if no agent OR user quit to menu
           if (!foundAgent || quitToMenu) {
             const modal = document.getElementById('welcome-modal');
@@ -265,20 +272,7 @@ function render() {
     ctx2d.strokeRect(tile.x * TILE_SIZE, tile.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
 
-  // Draw fog of war (darken tiles outside visibility radius)
-  if (agent && playing) {
-    const VISIBILITY_RADIUS = 50;
-    ctx2d.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    for (let ty = minTY; ty <= maxTY; ty++) {
-      for (let tx = minTX; tx <= maxTX; tx++) {
-        const dx = Math.abs(tx - agent.x);
-        const dy = Math.abs(ty - agent.y);
-        if (dx > VISIBILITY_RADIUS || dy > VISIBILITY_RADIUS) {
-          ctx2d.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-        }
-      }
-    }
-  }
+  // Fog of war removed - server already filters visibility via views
 
   // Draw ground items from nearby_items view (grouped by position for stack offset)
   const groundItems: any[] = [];
