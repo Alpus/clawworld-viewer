@@ -48,6 +48,7 @@ const playBtn = document.getElementById('play-btn') as HTMLButtonElement;
 const leaderboardDiv = document.getElementById('leaderboard') as HTMLDivElement;
 
 // Messages with timestamps for fading
+const MESSAGE_DURATION_MS = 8000; // How long messages float above agents (8 seconds)
 const floatingMessages: { text: string; name: string; x: number; y: number; time: number }[] = [];
 
 // Track loaded chunks
@@ -321,8 +322,8 @@ function render() {
   for (let i = floatingMessages.length - 1; i >= 0; i--) {
     const msg = floatingMessages[i];
     const age = now - msg.time;
-    if (age > 5000) { floatingMessages.splice(i, 1); continue; }
-    const alpha = Math.max(0, 1 - age / 5000);
+    if (age > MESSAGE_DURATION_MS) { floatingMessages.splice(i, 1); continue; }
+    const alpha = Math.max(0, 1 - age / MESSAGE_DURATION_MS);
     ctx2d.globalAlpha = alpha;
     ctx2d.fillStyle = 'white';
     ctx2d.strokeStyle = 'black';
@@ -330,7 +331,7 @@ function render() {
     ctx2d.font = '12px monospace';
     ctx2d.textAlign = 'center';
     const tx = msg.x * TILE_SIZE + TILE_SIZE / 2;
-    const ty = msg.y * TILE_SIZE - 8 - (age / 5000) * 20;
+    const ty = msg.y * TILE_SIZE - 8 - (age / MESSAGE_DURATION_MS) * 20;
     ctx2d.strokeText(msg.text, tx, ty);
     ctx2d.fillText(msg.text, tx, ty);
     ctx2d.globalAlpha = 1;
