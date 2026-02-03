@@ -34,6 +34,12 @@ import {
 // Import and reexport all reducer arg types
 import GenerateChunkReducer from "./generate_chunk_reducer";
 export { GenerateChunkReducer };
+import SetCooldownReducer from "./set_cooldown_reducer";
+export { SetCooldownReducer };
+import TeleportReducer from "./teleport_reducer";
+export { TeleportReducer };
+import SpawnTestItemReducer from "./spawn_test_item_reducer";
+export { SpawnTestItemReducer };
 import RegisterReducer from "./register_reducer";
 export { RegisterReducer };
 import MoveReducer from "./move_reducer";
@@ -64,8 +70,12 @@ import MessageRow from "./message_table";
 export { MessageRow };
 import RuleRow from "./rule_table";
 export { RuleRow };
+import RuntimeconfigRow from "./runtimeconfig_table";
+export { RuntimeconfigRow };
 import TileRow from "./tile_table";
 export { TileRow };
+import WorldruleRow from "./worldrule_table";
+export { WorldruleRow };
 
 // Import and reexport all types
 import Agent from "./agent_type";
@@ -92,14 +102,24 @@ import Register from "./register_type";
 export { Register };
 import Rule from "./rule_type";
 export { Rule };
+import Runtimeconfig from "./runtimeconfig_type";
+export { Runtimeconfig };
 import Say from "./say_type";
 export { Say };
+import SetCooldown from "./set_cooldown_type";
+export { SetCooldown };
+import SpawnTestItem from "./spawn_test_item_type";
+export { SpawnTestItem };
 import Take from "./take_type";
 export { Take };
+import Teleport from "./teleport_type";
+export { Teleport };
 import Tile from "./tile_type";
 export { Tile };
 import Use from "./use_type";
 export { Use };
+import Worldrule from "./worldrule_type";
+export { Worldrule };
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema(
@@ -178,6 +198,17 @@ const tablesSchema = __schema(
     ],
   }, RuleRow),
   __table({
+    name: 'runtimeconfig',
+    indexes: [
+      { name: 'key', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'runtimeconfig_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, RuntimeconfigRow),
+  __table({
     name: 'tile',
     indexes: [
       { name: 'id', algorithm: 'btree', columns: [
@@ -192,11 +223,25 @@ const tablesSchema = __schema(
       { name: 'tile_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, TileRow),
+  __table({
+    name: 'worldrule',
+    indexes: [
+      { name: 'id', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'worldrule_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, WorldruleRow),
 );
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("generate_chunk", GenerateChunkReducer),
+  __reducerSchema("set_cooldown", SetCooldownReducer),
+  __reducerSchema("teleport", TeleportReducer),
+  __reducerSchema("spawn_test_item", SpawnTestItemReducer),
   __reducerSchema("register", RegisterReducer),
   __reducerSchema("move", MoveReducer),
   __reducerSchema("say", SayReducer),

@@ -31,7 +31,7 @@ body { background: #111; overflow: hidden; font-family: monospace; color: #eee; 
 .bar { display: inline-block; width: 120px; height: 12px; background: #333; border-radius: 2px; vertical-align: middle; }
 .fill { display: block; height: 100%; border-radius: 2px; }
 .fill.hp { background: #22cc22; }
-.fill.hunger { background: #cc8822; }
+.fill.satiety { background: #22cc88; }
 .inventory { display: flex; gap: 4px; margin-top: 8px; }
 .slot {
   width: 40px; height: 50px; background: rgba(255,255,255,0.1);
@@ -61,7 +61,7 @@ body { background: #111; overflow: hidden; font-family: monospace; color: #eee; 
 </head>
 <body>
 <canvas id="game"></canvas>
-<button id="play-btn">🦀 PLAY</button>
+<button id="play-btn">PLAY</button>
 <input id="chat-input" type="text" placeholder="Type message..." maxlength="500">
 <div id="chat-box"></div>
 <div id="hud"></div>
@@ -73,7 +73,7 @@ body { background: #111; overflow: hidden; font-family: monospace; color: #eee; 
   <kbd>Q</kbd> Drop item<br>
   <kbd>F</kbd> + dir — Use on target<br>
   <kbd>F</kbd> + <kbd>Space</kbd> — Use on self (eat)<br>
-  <kbd>1</kbd>-<kbd>8</kbd> Select slot<br>
+  <kbd>0</kbd> Bare hands · <kbd>1</kbd>-<kbd>8</kbd> Inventory<br>
   <kbd>Enter</kbd> Chat
 </div>
 <script type="module" src="bundle.js"></script>

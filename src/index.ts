@@ -17,7 +17,8 @@ let conn: DbConnection | null = null;
 let myIdentity: Identity | null = null;
 let myToken: string | null = null;
 let playing = false;
-let selectedSlot = 0; // 0-7
+let myAgentCache: any = null; // Cache agent from onInsert
+let selectedSlot = 0; // 0 = bare hands, 1-8 = inventory slots
 let chatOpen = false;
 let chatText = '';
 let useMode = false; // F pressed, waiting for direction
@@ -91,18 +92,32 @@ function connect() {
       _conn.subscriptionBuilder()
         .onApplied(() => {
           console.log('Subscribed');
-          // Auto-detect returning player
-          const existing = getMyAgent();
-          if (existing) {
-            playing = true;
-            playBtn.style.display = 'none';
+          // Populate cache from existing agents (for returning players)
+          for (const a of _conn.db.agent.iter()) {
+            if (myIdentity && a.identity?.isEqual?.(myIdentity)) {
+              myAgentCache = a;
+              playing = true;
+              playBtn.style.display = 'none';
+              console.log('Found existing agent:', a.name);
+              break;
+            }
           }
           render();
         })
         .subscribeToAllTables();
     })
     .onDisconnect(() => { console.log('Disconnected'); })
-    .onConnectError((e) => { console.error('Connect error:', e); })
+    .onConnectError((e) => {
+      console.error('Connect error:', e);
+      // Auto-clear stale token on connection failure
+      // This handles cases where the server was restarted with a fresh database
+      if (savedToken) {
+        console.log('Connection failed with saved token, clearing token and retrying...');
+        localStorage.removeItem('clawworld_token');
+        // Retry connection without the stale token
+        setTimeout(() => connect(), 1000);
+      }
+    })
     .build();
 }
 
@@ -110,11 +125,8 @@ function connect() {
 // Get my agent
 // ============================================================
 function getMyAgent() {
-  if (!conn || !myIdentity) return null;
-  for (const a of conn.db.agent.iter()) {
-    if (a.identity?.isEqual?.(myIdentity)) return a;
-  }
-  return null;
+  // Use cache from onInsert/onUpdate callbacks
+  return myAgentCache;
 }
 
 // ============================================================
@@ -428,6 +440,31 @@ function drawItem(item: any, stackIndex: number = 0, stackSize: number = 1) {
     ctx2d.font = '10px monospace';
     ctx2d.fillText('?', cx - 3, cy + 3);
   }
+
+  // Draw item label below (only for top item in stack)
+  if (stackIndex === stackSize - 1) {
+    const name = getItemNameFromTags(tags);
+    if (name && name !== '?') {
+      ctx2d.font = '7px monospace';
+      ctx2d.textAlign = 'center';
+      ctx2d.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx2d.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx2d.lineWidth = 2;
+      // Position at bottom of tile, truncate if too long
+      const displayName = name.length > 6 ? name.substring(0, 5) + '..' : name;
+      const labelY = item.y * TILE_SIZE + TILE_SIZE - 2;
+      ctx2d.strokeText(displayName, cx, labelY);
+      ctx2d.fillText(displayName, cx, labelY);
+    }
+  }
+}
+
+// Extract item name from parsed tags
+function getItemNameFromTags(tags: Map<string, string | number | true>): string {
+  for (const [k] of tags) {
+    if (k.startsWith('name:')) return k.substring(5);
+  }
+  return '?';
 }
 
 function drawAgent(a: any) {
@@ -435,28 +472,46 @@ function drawAgent(a: any) {
   const cy = a.y * TILE_SIZE + TILE_SIZE / 2;
   const isMe = myIdentity && a.identity?.isEqual?.(myIdentity);
 
-  // Body (crab = red circle)
+  // Body (crab = small head up + two tail segments decreasing)
   ctx2d.fillStyle = isMe ? '#ff4444' : '#cc3333';
+  // Tail segment 2 (smallest, back)
   ctx2d.beginPath();
-  ctx2d.arc(cx, cy, 10, 0, Math.PI * 2);
+  ctx2d.arc(cx, cy + 10, 3, 0, Math.PI * 2);
   ctx2d.fill();
+  // Tail segment 1 (medium)
+  ctx2d.beginPath();
+  ctx2d.arc(cx, cy + 4, 5, 0, Math.PI * 2);
+  ctx2d.fill();
+  // Main body (head, smaller and higher)
+  ctx2d.beginPath();
+  ctx2d.arc(cx, cy - 4, 8, 0, Math.PI * 2);
+  ctx2d.fill();
+  // Outline for main body
   ctx2d.strokeStyle = isMe ? '#ffcc00' : '#000';
   ctx2d.lineWidth = isMe ? 2 : 1;
+  ctx2d.beginPath();
+  ctx2d.arc(cx, cy - 4, 8, 0, Math.PI * 2);
   ctx2d.stroke();
 
-  // Eyes
+  // Eyes (on smaller raised head)
   ctx2d.fillStyle = 'white';
-  ctx2d.beginPath(); ctx2d.arc(cx - 3, cy - 3, 2.5, 0, Math.PI * 2); ctx2d.fill();
-  ctx2d.beginPath(); ctx2d.arc(cx + 3, cy - 3, 2.5, 0, Math.PI * 2); ctx2d.fill();
+  ctx2d.beginPath(); ctx2d.arc(cx - 3, cy - 6, 2, 0, Math.PI * 2); ctx2d.fill();
+  ctx2d.beginPath(); ctx2d.arc(cx + 3, cy - 6, 2, 0, Math.PI * 2); ctx2d.fill();
   ctx2d.fillStyle = 'black';
-  ctx2d.beginPath(); ctx2d.arc(cx - 3, cy - 3, 1, 0, Math.PI * 2); ctx2d.fill();
-  ctx2d.beginPath(); ctx2d.arc(cx + 3, cy - 3, 1, 0, Math.PI * 2); ctx2d.fill();
+  ctx2d.beginPath(); ctx2d.arc(cx - 3, cy - 6, 0.8, 0, Math.PI * 2); ctx2d.fill();
+  ctx2d.beginPath(); ctx2d.arc(cx + 3, cy - 6, 0.8, 0, Math.PI * 2); ctx2d.fill();
 
-  // Claws
+  // Claws (pincers) - attached to smaller head
   ctx2d.strokeStyle = isMe ? '#ff4444' : '#cc3333';
   ctx2d.lineWidth = 2;
-  ctx2d.beginPath(); ctx2d.moveTo(cx - 10, cy); ctx2d.lineTo(cx - 15, cy - 5); ctx2d.stroke();
-  ctx2d.beginPath(); ctx2d.moveTo(cx + 10, cy); ctx2d.lineTo(cx + 15, cy - 5); ctx2d.stroke();
+  // Left arm (from head side outward)
+  ctx2d.beginPath(); ctx2d.moveTo(cx - 7, cy - 4); ctx2d.lineTo(cx - 14, cy - 5); ctx2d.stroke();
+  // Left pincer (from middle of arm going UP)
+  ctx2d.beginPath(); ctx2d.moveTo(cx - 10, cy - 4); ctx2d.lineTo(cx - 14, cy - 11); ctx2d.stroke();
+  // Right arm (from head side outward)
+  ctx2d.beginPath(); ctx2d.moveTo(cx + 7, cy - 4); ctx2d.lineTo(cx + 14, cy - 5); ctx2d.stroke();
+  // Right pincer (from middle of arm going UP)
+  ctx2d.beginPath(); ctx2d.moveTo(cx + 10, cy - 4); ctx2d.lineTo(cx + 14, cy - 11); ctx2d.stroke();
 
   // Name
   ctx2d.fillStyle = 'white';
@@ -491,27 +546,38 @@ function drawHUD() {
   playBtn.style.display = 'none';
 
   const hp = getTag(agent.tags, 'hp');
-  const hunger = getTag(agent.tags, 'hunger');
+  const satiety = getTag(agent.tags, 'satiety');
   const inv = getInventory();
 
   let html = `<div class="stat">HP: <span class="bar"><span class="fill hp" style="width:${hp}%"></span></span> ${hp}</div>`;
-  html += `<div class="stat">Hunger: <span class="bar"><span class="fill hunger" style="width:${hunger}%"></span></span> ${hunger}</div>`;
+  html += `<div class="stat">Satiety: <span class="bar"><span class="fill satiety" style="width:${satiety}%"></span></span> ${satiety}</div>`;
   html += `<div class="inventory">`;
+
+  // Slot 0: Bare hands (same format as other slots: number + icon)
+  const bareHandsSel = selectedSlot === 0 ? ' selected' : '';
+  html += `<div class="slot${bareHandsSel}" onclick="window.__selectSlot(0)" title="Bare hands (punch/interact)">0<br>${getHandIcon()}</div>`;
+
+  // Slots 1-8: Inventory
   for (let i = 0; i < 8; i++) {
     const item = inv[i];
-    const sel = i === selectedSlot ? ' selected' : '';
+    const sel = (i + 1) === selectedSlot ? ' selected' : '';
     const icon = item ? getItemIcon(item.tags) : '';
     const label = item ? getItemName(item.tags) : '';
-    html += `<div class="slot${sel}" onclick="window.__selectSlot(${i})" title="${label}">${i + 1}<br>${icon}</div>`;
+    html += `<div class="slot${sel}" onclick="window.__selectSlot(${i + 1})" title="${label}">${i + 1}<br>${icon}</div>`;
   }
   html += `</div>`;
+
   // Selected item info
-  const selItem = inv[selectedSlot];
-  if (selItem) {
-    const name = getItemName(selItem.tags);
-    html += `<div style="margin-top:4px;color:#ffcc00;font-size:12px">Selected: <b>${name}</b> — <kbd>F</kbd> to use, <kbd>Q</kbd> to drop</div>`;
-    if (hasTag(selItem.tags, 'food')) {
-      html += `<div style="color:#88ff88;font-size:11px">Press <kbd>F</kbd> then <kbd>Space</kbd> to eat</div>`;
+  if (selectedSlot === 0) {
+    html += `<div style="margin-top:4px;color:#ffcc00;font-size:12px">Selected: <b>Bare hands</b> — <kbd>F</kbd> to punch/take</div>`;
+  } else {
+    const selItem = inv[selectedSlot - 1];
+    if (selItem) {
+      const name = getItemName(selItem.tags);
+      html += `<div style="margin-top:4px;color:#ffcc00;font-size:12px">Selected: <b>${name}</b> — <kbd>F</kbd> to use, <kbd>Q</kbd> to drop</div>`;
+      if (hasTag(selItem.tags, 'food')) {
+        html += `<div style="color:#88ff88;font-size:11px">Press <kbd>F</kbd> then <kbd>Space</kbd> to eat</div>`;
+      }
     }
   }
 
@@ -720,6 +786,41 @@ function getItemIcon(tags: string): string {
   return `<img src="${dataUrl}" width="${ICON_SIZE}" height="${ICON_SIZE}" style="vertical-align:middle">`;
 }
 
+// Hand icon for bare hands (open palm with fingers)
+let handIconCache: string | null = null;
+function getHandIcon(): string {
+  if (handIconCache) return handIconCache;
+
+  const offscreen = document.createElement('canvas');
+  offscreen.width = ICON_SIZE;
+  offscreen.height = ICON_SIZE;
+  const octx = offscreen.getContext('2d')!;
+  const cx = ICON_SIZE / 2;
+  const cy = ICON_SIZE / 2 + 2;
+
+  octx.fillStyle = '#e8c4a0'; // skin tone
+
+  // Palm (rounded rectangle)
+  octx.beginPath();
+  octx.roundRect(cx - 5, cy - 2, 10, 10, 2);
+  octx.fill();
+
+  // Five fingers (vertical lines from palm)
+  const fingerWidth = 2;
+  const fingerSpacing = 2.5;
+  const fingerLength = 6;
+  for (let i = 0; i < 4; i++) {
+    const fx = cx - 4 + i * fingerSpacing;
+    octx.fillRect(fx, cy - 2 - fingerLength, fingerWidth, fingerLength);
+  }
+
+  // Thumb (angled to the side)
+  octx.fillRect(cx - 7, cy + 1, 4, 3);
+
+  handIconCache = `<img src="${offscreen.toDataURL('image/png')}" width="${ICON_SIZE}" height="${ICON_SIZE}" style="vertical-align:middle">`;
+  return handIconCache;
+}
+
 function getItemName(tags: string): string {
   const m = parseTags(tags);
   for (const [k] of m) {
@@ -758,7 +859,7 @@ function drawLeaderboard() {
     const mins = Math.floor(streak / 60);
     const secs = streak % 60;
     const timeStr = mins > 0 ? `${mins}m${secs}s` : `${secs}s`;
-    const prefix = alive ? '🟢' : '💀';
+    const prefix = alive ? '<span style="color:#22cc22">[A]</span>' : '<span style="color:#666">[X]</span>';
     html += `<div>${prefix} ${e.name}: ${timeStr} | K:${e.totalKills} D:${e.totalDeaths}</div>`;
   }
   leaderboardDiv.innerHTML = html;
@@ -770,24 +871,41 @@ function drawLeaderboard() {
 (window as any).__selectSlot = (i: number) => { selectedSlot = i; };
 (window as any).__getConn = () => conn;
 (window as any).__setPlaying = (v: boolean) => { playing = v; };
-(window as any).__getState = () => ({
-  playing,
-  myIdentity: myIdentity?.toHexString(),
-  myAgent: getMyAgent(),
-  inventoryCount: getInventory().length,
-});
+(window as any).__getState = () => {
+  // Serialize agent to plain object for Puppeteer tests
+  // SpacetimeDB objects with Identity/bigint don't serialize through page.evaluate
+  const serializedAgent = myAgentCache ? {
+    name: myAgentCache.name,
+    x: myAgentCache.x,
+    y: myAgentCache.y,
+    tags: myAgentCache.tags,
+    identity: myAgentCache.identity?.toHexString?.() ?? null,
+  } : null;
+  return {
+    playing,
+    myIdentity: myIdentity?.toHexString(),
+    myAgent: serializedAgent,
+    inventoryCount: getInventory().length,
+  };
+};
 
 playBtn.addEventListener('click', () => {
-  const name = prompt('Enter your name (alphanumeric, max 32):');
-  if (!name) return;
   if (!conn) return;
+
+  // Check if already have an agent
+  const existingAgent = getMyAgent();
+  if (existingAgent) {
+    playing = true;
+    playBtn.style.display = 'none';
+    return;
+  }
+
+  const name = prompt('Enter name:');
+  if (!name) return;
+
   conn.reducers.register({ name });
   playing = true;
   playBtn.style.display = 'none';
-
-  // Check if already registered (returning player)
-  const existing = getMyAgent();
-  if (existing) playing = true;
 });
 
 document.addEventListener('keydown', (e) => {
@@ -825,11 +943,14 @@ document.addEventListener('keydown', (e) => {
     else if (e.key === 'Escape') { useMode = false; return; }
 
     if (target) {
-      const inv = getInventory();
-      const item = inv[selectedSlot];
-      const itemId = item ? item.id : 0n;
+      let itemId = 0n;
+      if (selectedSlot > 0) {
+        const inv = getInventory();
+        const item = inv[selectedSlot - 1];
+        itemId = item ? item.id : 0n;
+      }
       conn.reducers.use({ itemId, target });
-            useMode = false;
+      useMode = false;
     }
     return;
   }
@@ -857,11 +978,13 @@ document.addEventListener('keydown', (e) => {
     }
   }
 
-  // Drop selected
+  // Drop selected (only if not bare hands)
   else if (e.key === 'q' || e.key === 'Q') {
-    const inv = getInventory();
-    const item = inv[selectedSlot];
-    if (item) { conn.reducers.drop({ itemId: item.id }); }
+    if (selectedSlot > 0) {
+      const inv = getInventory();
+      const item = inv[selectedSlot - 1];
+      if (item) { conn.reducers.drop({ itemId: item.id }); }
+    }
   }
 
   // Use mode
@@ -869,9 +992,12 @@ document.addEventListener('keydown', (e) => {
     useMode = true;
   }
 
-  // Select inventory slot
+  // Select slot: 0 = bare hands, 1-8 = inventory
+  else if (e.key === '0' || e.key === '`') {
+    selectedSlot = 0; // bare hands
+  }
   else if (e.key >= '1' && e.key <= '8') {
-    selectedSlot = parseInt(e.key) - 1;
+    selectedSlot = parseInt(e.key); // 1-8 for inventory
   }
 
   // Chat
@@ -917,8 +1043,32 @@ function setupCallbacks() {
 
   // Auto-detect returning player
   conn.db.agent.onInsert((_ctx, agent) => {
+    console.log('Agent inserted:', agent.name, 'identity match:', myIdentity && agent.identity?.isEqual?.(myIdentity));
     if (myIdentity && agent.identity?.isEqual?.(myIdentity)) {
+      console.log('MY AGENT INSERTED! Caching and setting playing=true');
+      myAgentCache = agent;
       playing = true;
+      playBtn.style.display = 'none';
+    }
+  });
+
+  // Track agent updates
+  conn.db.agent.onUpdate((_ctx, _old, updated) => {
+    if (myIdentity && updated.identity?.isEqual?.(myIdentity)) {
+      myAgentCache = updated; // Update cache
+      if (Number(updated.lastActionAt) > Number(_old.lastActionAt)) {
+        lastActionTime = Date.now();
+      }
+    }
+  });
+
+  // Track agent deletion (death)
+  conn.db.agent.onDelete((_ctx, agent) => {
+    if (myIdentity && agent.identity?.isEqual?.(myIdentity)) {
+      console.log('MY AGENT DELETED!');
+      myAgentCache = null;
+      playing = false;
+      playBtn.style.display = 'block';
     }
   });
 
