@@ -78,6 +78,8 @@ import MessageRow from "./message_table";
 export { MessageRow };
 import MyAgentRow from "./my_agent_table";
 export { MyAgentRow };
+import MyObservationRow from "./my_observation_table";
+export { MyObservationRow };
 import NearbyActionsRow from "./nearby_actions_table";
 export { NearbyActionsRow };
 import NearbyAgentsRow from "./nearby_agents_table";
@@ -128,6 +130,8 @@ import Move from "./move_type";
 export { Move };
 import MyAgent from "./my_agent_type";
 export { MyAgent };
+import MyObservation from "./my_observation_type";
+export { MyObservation };
 import NearbyActions from "./nearby_actions_type";
 export { NearbyActions };
 import NearbyAgents from "./nearby_agents_type";
@@ -307,6 +311,13 @@ const tablesSchema = __schema(
     constraints: [
     ],
   }, MyAgentRow),
+  __table({
+    name: 'my_observation',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyObservationRow),
   __table({
     name: 'nearby_actions',
     indexes: [

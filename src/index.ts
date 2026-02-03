@@ -120,23 +120,27 @@ function connect() {
           for (const a of _conn.db.myAgent.iter()) {
             if (a) {
               myAgentCache = a;
-              playing = true;
-              playBtn.style.display = 'none';
               foundAgent = true;
-              // Show quit button and controls for returning players
-              const quitBtn = document.getElementById('quit-btn');
-              if (quitBtn) quitBtn.style.display = 'block';
-              const controlsHelp = document.getElementById('controls-help');
-              if (controlsHelp) controlsHelp.style.display = 'block';
               console.log('Found existing agent:', a.name);
               break;
             }
           }
 
-          // Show welcome modal only if no existing agent
-          if (!foundAgent) {
+          // Check if user previously quit to menu (don't auto-resume)
+          const quitToMenu = localStorage.getItem('clawworld_quit_to_menu') === 'true';
+
+          // Show welcome modal if no agent OR user quit to menu
+          if (!foundAgent || quitToMenu) {
             const modal = document.getElementById('welcome-modal');
             if (modal) modal.style.display = 'flex';
+          } else {
+            // Auto-resume playing
+            playing = true;
+            playBtn.style.display = 'none';
+            const quitBtn = document.getElementById('quit-btn');
+            if (quitBtn) quitBtn.style.display = 'block';
+            const controlsHelp = document.getElementById('controls-help');
+            if (controlsHelp) controlsHelp.style.display = 'block';
           }
 
           render();
@@ -263,7 +267,7 @@ function render() {
 
   // Draw fog of war (darken tiles outside visibility radius)
   if (agent && playing) {
-    const VISIBILITY_RADIUS = 3;
+    const VISIBILITY_RADIUS = 50;
     ctx2d.fillStyle = 'rgba(0, 0, 0, 0.7)';
     for (let ty = minTY; ty <= maxTY; ty++) {
       for (let tx = minTX; tx <= maxTX; tx++) {
@@ -1217,6 +1221,9 @@ function checkMyAgentFromView() {
 // Death Screen
 // ============================================================
 function showDeathScreen() {
+  // Clear token so page reload shows welcome screen, not dead agent
+  localStorage.removeItem('clawworld_token');
+
   // Create death overlay
   const overlay = document.createElement('div');
   overlay.id = 'death-overlay';
