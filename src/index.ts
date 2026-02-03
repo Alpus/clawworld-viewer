@@ -670,10 +670,10 @@ function drawHUD() {
 
   if (useMode) html += `<div class="use-hint">USE: W/A/S/D=direction, F=here, Space=self (eat), Esc=cancel</div>`;
 
-  // Cooldown indicator
-  const cdRemaining = Math.max(0, 1000 - (Date.now() - lastActionTime));
+  // Cooldown indicator (0.5 second = 500ms)
+  const cdRemaining = Math.max(0, 500 - (Date.now() - lastActionTime));
   if (cdRemaining > 0) {
-    const cdPct = (cdRemaining / 1000) * 100;
+    const cdPct = (cdRemaining / 500) * 100;
     html += `<div class="stat" style="margin-top:6px">Action: <span class="bar"><span class="fill" style="width:${cdPct}%;background:#cc4444"></span></span></div>`;
   } else {
     html += `<div class="stat" style="margin-top:6px;color:#66ff66">Action: READY</div>`;
