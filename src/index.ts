@@ -26,6 +26,11 @@ let lastActionTime = 0;
 let showItemLabels = false; // Toggle with L key
 const CLIENT_COOLDOWN = 200; // ms, throttle actions client-side
 
+// Death detection: Views API fires onDelete+onInsert on every re-evaluation (false positives)
+// Solution: Track consecutive frames with no agent. Only trigger death after N frames.
+const DEATH_CONFIRM_FRAMES = 10; // ~170ms at 60fps
+let deathFrameCount = 0; // Consecutive frames with no agent in view
+
 // Visual feedback for actions
 type ActionEffect = { type: 'success' | 'failed'; x: number; y: number; time: number } | null;
 let actionEffect: ActionEffect = null;
@@ -1127,15 +1132,23 @@ function setupCallbacks() {
   if (!conn) return;
 
   // My agent view callbacks
+  // NOTE: Views API fires onDelete+onInsert on EVERY re-evaluation, not just actual changes.
+  // Death detection is done via frame-counting in checkMyAgentFromView() instead.
   conn.db.myAgent.onInsert((_ctx, agent) => {
     console.log('myAgent view onInsert:', agent.name);
+    deathFrameCount = 0; // Reset death counter - agent exists
     myAgentCache = agent;
     playing = true;
     playBtn.style.display = 'none';
+    const quitBtn = document.getElementById('quit-btn');
+    if (quitBtn) quitBtn.style.display = 'block';
+    const controlsHelp = document.getElementById('controls-help');
+    if (controlsHelp) controlsHelp.style.display = 'block';
   });
 
   conn.db.myAgent.onUpdate((_ctx, _old, updated) => {
     console.log('myAgent view onUpdate');
+    deathFrameCount = 0; // Reset death counter - agent exists
     myAgentCache = updated;
     if (Number(updated.lastActionAt) > Number(_old.lastActionAt)) {
       lastActionTime = Date.now();
@@ -1143,17 +1156,11 @@ function setupCallbacks() {
     }
   });
 
+  // NOTE: onDelete is UNRELIABLE for death detection due to Views API re-evaluation cycles.
+  // Death detection is handled by frame-counting in checkMyAgentFromView() instead.
   conn.db.myAgent.onDelete((_ctx, _agent) => {
-    console.log('myAgent view onDelete');
-    myAgentCache = null;
-    playing = false;
-    playBtn.style.display = 'none';
-    hud.style.display = 'none';
-    const controlsHelp = document.getElementById('controls-help');
-    if (controlsHelp) controlsHelp.style.display = 'none';
-    const quitBtn = document.getElementById('quit-btn');
-    if (quitBtn) quitBtn.style.display = 'none';
-    showDeathScreen();
+    console.log('myAgent view onDelete (ignored - using frame-based detection)');
+    // Do NOT trigger death here - Views API fires this spuriously
   });
 
   // Message view callbacks
@@ -1170,7 +1177,9 @@ function setupCallbacks() {
   });
 }
 
-// Polling fallback: Check myAgent view in render loop
+// Polling: Check myAgent view in render loop
+// This is the PRIMARY method for detecting both agent appearing AND death.
+// Uses frame-counting to avoid false positives from Views API re-evaluation.
 function checkMyAgentFromView() {
   if (!conn) return;
 
@@ -1180,33 +1189,47 @@ function checkMyAgentFromView() {
     break;
   }
 
-  // Detect agent appeared
-  if (foundAgent && !myAgentCache) {
-    console.log('Polling detected agent:', foundAgent.name);
-    myAgentCache = foundAgent;
-    playing = true;
-    playBtn.style.display = 'none';
-  }
-  // Detect agent disappeared (death)
-  else if (!foundAgent && myAgentCache) {
-    console.log('Polling detected agent death');
-    myAgentCache = null;
-    playing = false;
-    playBtn.style.display = 'none';
-    hud.style.display = 'none';
-    const controlsHelp = document.getElementById('controls-help');
-    if (controlsHelp) controlsHelp.style.display = 'none';
-    const quitBtn = document.getElementById('quit-btn');
-    if (quitBtn) quitBtn.style.display = 'none';
-    showDeathScreen();
-  }
-  // Update cache with latest data
-  else if (foundAgent && myAgentCache) {
-    const oldLastAction = Number(myAgentCache.lastActionAt);
-    myAgentCache = foundAgent;
-    if (Number(foundAgent.lastActionAt) > oldLastAction) {
-      lastActionTime = Date.now();
-      actionEffect = { type: 'success', x: foundAgent.x, y: foundAgent.y, time: Date.now() };
+  if (foundAgent) {
+    // Agent exists in view - reset death counter
+    deathFrameCount = 0;
+
+    // Detect agent appeared (for new registration or recovery)
+    if (!myAgentCache) {
+      console.log('Polling detected agent:', foundAgent.name);
+      myAgentCache = foundAgent;
+      playing = true;
+      playBtn.style.display = 'none';
+      const quitBtn = document.getElementById('quit-btn');
+      if (quitBtn) quitBtn.style.display = 'block';
+      const controlsHelp = document.getElementById('controls-help');
+      if (controlsHelp) controlsHelp.style.display = 'block';
+    }
+    // Update cache with latest data (keep in sync)
+    else {
+      const oldLastAction = Number(myAgentCache.lastActionAt);
+      myAgentCache = foundAgent;
+      if (Number(foundAgent.lastActionAt) > oldLastAction) {
+        lastActionTime = Date.now();
+        actionEffect = { type: 'success', x: foundAgent.x, y: foundAgent.y, time: Date.now() };
+      }
+    }
+  } else if (myAgentCache && playing) {
+    // No agent in view but we had one - potential death
+    // Increment frame counter to confirm it's not just a view re-evaluation glitch
+    deathFrameCount++;
+
+    if (deathFrameCount >= DEATH_CONFIRM_FRAMES) {
+      console.log(`Death confirmed after ${deathFrameCount} frames`);
+      myAgentCache = null;
+      playing = false;
+      playBtn.style.display = 'none';
+      hud.style.display = 'none';
+      const controlsHelp = document.getElementById('controls-help');
+      if (controlsHelp) controlsHelp.style.display = 'none';
+      const quitBtn = document.getElementById('quit-btn');
+      if (quitBtn) quitBtn.style.display = 'none';
+      showDeathScreen();
+      deathFrameCount = 0; // Reset for potential next life
     }
   }
 }
