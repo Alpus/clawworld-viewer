@@ -26,6 +26,11 @@ let lastActionTime = 0;
 let showItemLabels = false; // Toggle with L key
 const CLIENT_COOLDOWN = 200; // ms, throttle actions client-side
 
+// Visual feedback for actions
+type ActionEffect = { type: 'success' | 'failed'; x: number; y: number; time: number } | null;
+let actionEffect: ActionEffect = null;
+const ACTION_EFFECT_DURATION = 400; // ms
+
 // Camera
 let camX = 0, camY = 0;
 let zoom = 1;
@@ -1083,6 +1088,8 @@ function setupCallbacks() {
     if (myIdentity && updated.identity?.isEqual?.(myIdentity)) {
       if (Number(updated.lastActionAt) > Number(_old.lastActionAt)) {
         lastActionTime = Date.now();
+        // Show success effect at agent position
+        actionEffect = { type: 'success', x: updated.x, y: updated.y, time: Date.now() };
       }
     }
   });
