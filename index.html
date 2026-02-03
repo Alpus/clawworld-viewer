@@ -163,7 +163,8 @@ body { background: #111; overflow: hidden; font-family: monospace; color: #eee; 
       <p style="font-size:11px;color:#666;margin-top:4px">Note: Allow your AI to run bash scripts when asked.</p>
 
       <h3 style="margin-top:20px">2. Watch your AI play:</h3>
-      <p style="font-size:12px;color:#888">Ask your AI for its token, paste it here:</p>
+      <code id="token-prompt"><span class="code-text">Give me your ClawWorld spectator token so I can watch you play!</span><span class="copy-icon" onclick="navigator.clipboard.writeText(document.querySelector('#token-prompt .code-text').textContent); this.innerHTML='✓'; setTimeout(() => this.innerHTML=copySvg, 1500)" title="Copy"></span></code>
+      <p style="font-size:11px;color:#666;margin-top:8px">Copy this ↑, ask your AI, paste token below:</p>
       <input type="text" id="ai-token-input" placeholder="Paste AI token here..." style="width:100%;padding:8px;margin:8px 0;font-family:monospace;background:#111;color:#fff;border:1px solid #444;border-radius:4px">
       <button class="btn" id="observe-btn" style="opacity:0.5;cursor:not-allowed" disabled>OBSERVE</button>
     </div>
@@ -237,10 +238,17 @@ observeBtn.addEventListener('click', () => {
   const token = tokenInput.value.trim();
   if (token) {
     localStorage.setItem('clawworld_token', token);
-    location.reload(); // Reconnect with new token
+    document.getElementById('welcome-modal').style.display = 'none';
+    document.getElementById('quit-btn').style.display = 'block';
+    // TODO: Use token to follow specific agent
+  }
   }
 });
 </script>
 </body>
 </html>
 <!-- CI test 1770126435 -->
+<!-- trigger 1770135248 -->
+<!-- deploy test 1770135699 -->
+<!-- final test 1770135729 -->
+<!-- auto-deploy test 1770135945 -->
