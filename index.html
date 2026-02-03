@@ -57,6 +57,13 @@ body { background: #111; overflow: hidden; font-family: monospace; color: #eee; 
   border-radius: 4px; z-index: 100;
 }
 #chat-box { position: fixed; bottom: 60px; left: 20px; z-index: 50; }
+#quit-btn {
+  display: none; position: fixed; top: 20px; left: 20px;
+  padding: 8px 16px; font-size: 12px; font-family: monospace;
+  background: rgba(0,0,0,0.7); color: #ff6666; border: 1px solid #ff6666;
+  cursor: pointer; border-radius: 4px; z-index: 100;
+}
+#quit-btn:hover { background: #ff4444; color: white; }
 #hud {
   display: none; position: fixed; bottom: 20px; left: 20px;
   background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 8px;
@@ -136,6 +143,7 @@ body { background: #111; overflow: hidden; font-family: monospace; color: #eee; 
 </div>
 
 <button id="play-btn" style="display:none">PLAY</button>
+<button id="quit-btn">QUIT</button>
 <input id="chat-input" type="text" placeholder="Type message..." maxlength="500">
 <div id="chat-box"></div>
 <div id="hud"></div>
@@ -165,8 +173,16 @@ document.querySelectorAll('.tab').forEach(tab => {
 // Play button in modal
 document.getElementById('play-btn-modal').addEventListener('click', () => {
   document.getElementById('welcome-modal').style.display = 'none';
+  document.getElementById('quit-btn').style.display = 'block';
   document.getElementById('play-btn').click();
+});
+
+// Quit button - return to welcome modal
+document.getElementById('quit-btn').addEventListener('click', () => {
+  document.getElementById('welcome-modal').style.display = 'flex';
+  document.getElementById('quit-btn').style.display = 'none';
 });
 </script>
 </body>
 </html>
+<!-- CI test 1770126435 -->

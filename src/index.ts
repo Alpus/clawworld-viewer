@@ -116,6 +116,12 @@ function connect() {
               myAgentCache = a;
               playing = true;
               playBtn.style.display = 'none';
+              // Hide welcome modal for returning players
+              const modal = document.getElementById('welcome-modal');
+              if (modal) modal.style.display = 'none';
+              // Show quit button
+              const quitBtn = document.getElementById('quit-btn');
+              if (quitBtn) quitBtn.style.display = 'block';
               console.log('Found existing agent:', a.name);
               break;
             }
