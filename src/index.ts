@@ -1111,10 +1111,20 @@ function setupCallbacks() {
   // Track agent deletion (death)
   conn.db.agent.onDelete((_ctx, agent) => {
     if (myIdentity && agent.identity?.isEqual?.(myIdentity)) {
-      console.log('MY AGENT DELETED!');
+      console.log('MY AGENT DELETED (death)!');
       myAgentCache = null;
       playing = false;
-      playBtn.style.display = 'block';
+
+      // Hide game UI
+      playBtn.style.display = 'none';
+      hud.style.display = 'none';
+      const controlsHelp = document.getElementById('controls-help');
+      if (controlsHelp) controlsHelp.style.display = 'none';
+      const quitBtn = document.getElementById('quit-btn');
+      if (quitBtn) quitBtn.style.display = 'none';
+
+      // Show death screen then welcome modal
+      showDeathScreen();
     }
   });
 
@@ -1142,6 +1152,52 @@ function setupCallbacks() {
     });
   });
 
+}
+
+// ============================================================
+// Death Screen
+// ============================================================
+function showDeathScreen() {
+  // Create death overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'death-overlay';
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    z-index: 2000;
+  `;
+
+  overlay.innerHTML = `
+    <div style="color: #cc2222; font-size: 72px; font-weight: bold; text-shadow: 0 0 20px #ff0000;">
+      DEAD
+    </div>
+    <div style="color: #aaa; font-size: 18px; margin-top: 20px;">
+      You have perished in ClawWorld
+    </div>
+    <button id="death-continue-btn" style="
+      margin-top: 40px; padding: 15px 40px;
+      font-size: 18px; cursor: pointer;
+      background: #333; color: white; border: 2px solid #666;
+      border-radius: 8px;
+    ">
+      Continue
+    </button>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Handle continue button
+  const continueBtn = document.getElementById('death-continue-btn');
+  if (continueBtn) {
+    continueBtn.addEventListener('click', () => {
+      overlay.remove();
+      // Show welcome modal
+      const modal = document.getElementById('welcome-modal');
+      if (modal) modal.style.display = 'flex';
+    });
+  }
 }
 
 // ============================================================
