@@ -110,22 +110,32 @@ function connect() {
       _conn.subscriptionBuilder()
         .onApplied(() => {
           console.log('Subscribed');
-          // Populate cache from existing agents (for returning players)
+          // Hide loading screen
+          const loadingScreen = document.getElementById('loading-screen');
+          if (loadingScreen) loadingScreen.style.display = 'none';
+
+          // Check for existing agent (returning player)
+          let foundAgent = false;
           for (const a of _conn.db.agent.iter()) {
             if (myIdentity && a.identity?.isEqual?.(myIdentity)) {
               myAgentCache = a;
               playing = true;
               playBtn.style.display = 'none';
-              // Hide welcome modal for returning players
-              const modal = document.getElementById('welcome-modal');
-              if (modal) modal.style.display = 'none';
-              // Show quit button
+              foundAgent = true;
+              // Show quit button for returning players
               const quitBtn = document.getElementById('quit-btn');
               if (quitBtn) quitBtn.style.display = 'block';
               console.log('Found existing agent:', a.name);
               break;
             }
           }
+
+          // Show welcome modal only if no existing agent
+          if (!foundAgent) {
+            const modal = document.getElementById('welcome-modal');
+            if (modal) modal.style.display = 'flex';
+          }
+
           render();
         })
         .subscribeToAllTables();
@@ -200,8 +210,11 @@ function render() {
     camX = agent.x * TILE_SIZE + TILE_SIZE / 2;
     camY = agent.y * TILE_SIZE + TILE_SIZE / 2;
     ensureChunksLoaded(agent.x, agent.y);
-  } else if (playing) {
-    // Agent not yet loaded after register - load chunks around origin
+  } else {
+    // Not playing or no agent - show world around origin (0,0)
+    // This makes the welcome screen show world activity in the background
+    camX = 0;
+    camY = 0;
     ensureChunksLoaded(0, 0);
   }
 
