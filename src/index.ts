@@ -106,18 +106,18 @@ function connect() {
       console.log('Connected as', identity.toHexString());
       setupCallbacks();
 
-      // Subscribe to all public tables
+      // Subscribe to views (per-client filtered data) + leaderboard (public)
       _conn.subscriptionBuilder()
         .onApplied(() => {
-          console.log('Subscribed');
+          console.log('Subscribed to views');
           // Hide loading screen
           const loadingScreen = document.getElementById('loading-screen');
           if (loadingScreen) loadingScreen.style.display = 'none';
 
-          // Check for existing agent (returning player)
+          // Check for existing agent via my_agent view
           let foundAgent = false;
-          for (const a of _conn.db.agent.iter()) {
-            if (myIdentity && a.identity?.isEqual?.(myIdentity)) {
+          for (const a of _conn.db.myAgent.iter()) {
+            if (a) {
               myAgentCache = a;
               playing = true;
               playBtn.style.display = 'none';
@@ -140,7 +140,14 @@ function connect() {
 
           render();
         })
-        .subscribeToAllTables();
+        .subscribe([
+          'SELECT * FROM my_agent',
+          'SELECT * FROM nearby_tiles',
+          'SELECT * FROM nearby_items',
+          'SELECT * FROM nearby_agents',
+          'SELECT * FROM nearby_messages',
+          'SELECT * FROM leaderboard'
+        ]);
     })
     .onDisconnect(() => { console.log('Disconnected'); })
     .onConnectError((e) => {
@@ -171,7 +178,8 @@ function getMyAgent() {
 function getInventory() {
   if (!conn || !myIdentity) return [];
   const items: any[] = [];
-  for (const item of conn.db.item.iter()) {
+  // nearby_items includes our carried items (they're at our position)
+  for (const item of conn.db.nearbyItems.iter()) {
     if (item.carrier && item.carrier.isEqual?.(myIdentity)) items.push(item);
   }
   return items;
@@ -207,6 +215,9 @@ function render() {
 
   if (!conn) return;
 
+  // Poll my_agent view (fallback for view callback issues)
+  checkMyAgentFromView();
+
   const agent = getMyAgent();
   if (agent && playing) {
     camX = agent.x * TILE_SIZE + TILE_SIZE / 2;
@@ -233,8 +244,8 @@ function render() {
   const minTY = Math.floor((camY - halfH) / TILE_SIZE) - 1;
   const maxTY = Math.ceil((camY + halfH) / TILE_SIZE) + 1;
 
-  // Draw tiles
-  for (const tile of conn.db.tile.iter()) {
+  // Draw tiles from nearby_tiles view (visibility-filtered)
+  for (const tile of conn.db.nearbyTiles.iter()) {
     if (tile.x < minTX || tile.x > maxTX || tile.y < minTY || tile.y > maxTY) continue;
     const tags = parseTags(tile.tags);
     let color = '#333';
@@ -249,9 +260,24 @@ function render() {
     ctx2d.strokeRect(tile.x * TILE_SIZE, tile.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
   }
 
-  // Draw ground items (grouped by position for stack offset)
+  // Draw fog of war (darken tiles outside visibility radius)
+  if (agent && playing) {
+    const VISIBILITY_RADIUS = 3;
+    ctx2d.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    for (let ty = minTY; ty <= maxTY; ty++) {
+      for (let tx = minTX; tx <= maxTX; tx++) {
+        const dx = Math.abs(tx - agent.x);
+        const dy = Math.abs(ty - agent.y);
+        if (dx > VISIBILITY_RADIUS || dy > VISIBILITY_RADIUS) {
+          ctx2d.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
+      }
+    }
+  }
+
+  // Draw ground items from nearby_items view (grouped by position for stack offset)
   const groundItems: any[] = [];
-  for (const item of conn.db.item.iter()) {
+  for (const item of conn.db.nearbyItems.iter()) {
     if (item.carrier) continue;
     if (item.x < minTX || item.x > maxTX || item.y < minTY || item.y > maxTY) continue;
     groundItems.push(item);
@@ -277,8 +303,15 @@ function render() {
     }
   }
 
-  // Draw agents
-  for (const a of conn.db.agent.iter()) {
+  // Draw my agent from my_agent view
+  for (const a of conn.db.myAgent.iter()) {
+    if (a && a.x >= minTX && a.x <= maxTX && a.y >= minTY && a.y <= maxTY) {
+      drawAgent(a);
+    }
+  }
+
+  // Draw nearby agents from nearby_agents view
+  for (const a of conn.db.nearbyAgents.iter()) {
     if (a.x < minTX || a.x > maxTX || a.y < minTY || a.y > maxTY) continue;
     drawAgent(a);
   }
@@ -873,10 +906,16 @@ function getItemName(tags: string): string {
 function drawLeaderboard() {
   if (!conn) return;
 
-  // Build map of alive agents' born_at for current streak
+  // Build map of visible agents' born_at for current streak
+  // (only agents in our visibility range - my_agent + nearby_agents)
   const aliveBornAt = new Map<string, number>();
-  for (const a of conn.db.agent.iter()) {
-    const tags = parseTags(a.tags);
+  for (const a of conn.db.myAgent.iter()) {
+    if (a) {
+      const born = getTag(a.tags, 'born_at');
+      if (born > 0) aliveBornAt.set(a.name, born);
+    }
+  }
+  for (const a of conn.db.nearbyAgents.iter()) {
     const born = getTag(a.tags, 'born_at');
     if (born > 0) aliveBornAt.set(a.name, born);
   }
@@ -1007,7 +1046,7 @@ document.addEventListener('keydown', (e) => {
     const agent = getMyAgent();
     if (!agent) return;
     const takeable: any[] = [];
-    for (const item of conn.db.item.iter()) {
+    for (const item of conn.db.nearbyItems.iter()) {
       if (!item.carrier && item.x === agent.x && item.y === agent.y
           && !hasTag(item.tags, 'blocking') && !hasTag(item.tags, 'rooted')) {
         takeable.push(item);
@@ -1082,65 +1121,43 @@ canvas.addEventListener('wheel', (e) => {
 });
 
 // ============================================================
-// Watch for messages
+// Watch for messages (views-based - tables are private)
 // ============================================================
 function setupCallbacks() {
   if (!conn) return;
 
-  // Auto-detect returning player
-  conn.db.agent.onInsert((_ctx, agent) => {
-    console.log('Agent inserted:', agent.name, 'identity match:', myIdentity && agent.identity?.isEqual?.(myIdentity));
-    if (myIdentity && agent.identity?.isEqual?.(myIdentity)) {
-      console.log('MY AGENT INSERTED! Caching and setting playing=true');
-      myAgentCache = agent;
-      playing = true;
-      playBtn.style.display = 'none';
+  // My agent view callbacks
+  conn.db.myAgent.onInsert((_ctx, agent) => {
+    console.log('myAgent view onInsert:', agent.name);
+    myAgentCache = agent;
+    playing = true;
+    playBtn.style.display = 'none';
+  });
+
+  conn.db.myAgent.onUpdate((_ctx, _old, updated) => {
+    console.log('myAgent view onUpdate');
+    myAgentCache = updated;
+    if (Number(updated.lastActionAt) > Number(_old.lastActionAt)) {
+      lastActionTime = Date.now();
+      actionEffect = { type: 'success', x: updated.x, y: updated.y, time: Date.now() };
     }
   });
 
-  // Track agent updates
-  conn.db.agent.onUpdate((_ctx, _old, updated) => {
-    if (myIdentity && updated.identity?.isEqual?.(myIdentity)) {
-      myAgentCache = updated; // Update cache
-      if (Number(updated.lastActionAt) > Number(_old.lastActionAt)) {
-        lastActionTime = Date.now();
-      }
-    }
+  conn.db.myAgent.onDelete((_ctx, _agent) => {
+    console.log('myAgent view onDelete');
+    myAgentCache = null;
+    playing = false;
+    playBtn.style.display = 'none';
+    hud.style.display = 'none';
+    const controlsHelp = document.getElementById('controls-help');
+    if (controlsHelp) controlsHelp.style.display = 'none';
+    const quitBtn = document.getElementById('quit-btn');
+    if (quitBtn) quitBtn.style.display = 'none';
+    showDeathScreen();
   });
 
-  // Track agent deletion (death)
-  conn.db.agent.onDelete((_ctx, agent) => {
-    if (myIdentity && agent.identity?.isEqual?.(myIdentity)) {
-      console.log('MY AGENT DELETED (death)!');
-      myAgentCache = null;
-      playing = false;
-
-      // Hide game UI
-      playBtn.style.display = 'none';
-      hud.style.display = 'none';
-      const controlsHelp = document.getElementById('controls-help');
-      if (controlsHelp) controlsHelp.style.display = 'none';
-      const quitBtn = document.getElementById('quit-btn');
-      if (quitBtn) quitBtn.style.display = 'none';
-
-      // Show death screen then welcome modal
-      showDeathScreen();
-    }
-  });
-
-  // Track cooldown from server-confirmed actions (last_action_at change)
-  conn.db.agent.onUpdate((_ctx, _old, updated) => {
-    if (myIdentity && updated.identity?.isEqual?.(myIdentity)) {
-      if (Number(updated.lastActionAt) > Number(_old.lastActionAt)) {
-        lastActionTime = Date.now();
-        // Show success effect at agent position
-        actionEffect = { type: 'success', x: updated.x, y: updated.y, time: Date.now() };
-      }
-    }
-  });
-
-  conn.db.message.onInsert((_ctx, msg) => {
-    // Only show messages sent within last 10 seconds (skip historical on reconnect)
+  // Message view callbacks
+  conn.db.nearbyMessages.onInsert((_ctx, msg) => {
     const msgAge = Date.now() - Number(msg.sentAt);
     if (msgAge > 10000) return;
     floatingMessages.push({
@@ -1151,7 +1168,47 @@ function setupCallbacks() {
       time: Date.now(),
     });
   });
+}
 
+// Polling fallback: Check myAgent view in render loop
+function checkMyAgentFromView() {
+  if (!conn) return;
+
+  let foundAgent: any = null;
+  for (const a of conn.db.myAgent.iter()) {
+    foundAgent = a;
+    break;
+  }
+
+  // Detect agent appeared
+  if (foundAgent && !myAgentCache) {
+    console.log('Polling detected agent:', foundAgent.name);
+    myAgentCache = foundAgent;
+    playing = true;
+    playBtn.style.display = 'none';
+  }
+  // Detect agent disappeared (death)
+  else if (!foundAgent && myAgentCache) {
+    console.log('Polling detected agent death');
+    myAgentCache = null;
+    playing = false;
+    playBtn.style.display = 'none';
+    hud.style.display = 'none';
+    const controlsHelp = document.getElementById('controls-help');
+    if (controlsHelp) controlsHelp.style.display = 'none';
+    const quitBtn = document.getElementById('quit-btn');
+    if (quitBtn) quitBtn.style.display = 'none';
+    showDeathScreen();
+  }
+  // Update cache with latest data
+  else if (foundAgent && myAgentCache) {
+    const oldLastAction = Number(myAgentCache.lastActionAt);
+    myAgentCache = foundAgent;
+    if (Number(foundAgent.lastActionAt) > oldLastAction) {
+      lastActionTime = Date.now();
+      actionEffect = { type: 'success', x: foundAgent.x, y: foundAgent.y, time: Date.now() };
+    }
+  }
 }
 
 // ============================================================
