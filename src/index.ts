@@ -1215,6 +1215,11 @@ function checkMyAgentFromView() {
 // Death Screen
 // ============================================================
 function showDeathScreen() {
+  // Prevent multiple death screens stacking
+  if (document.getElementById('death-overlay')) {
+    return;
+  }
+
   // Clear token so page reload shows welcome screen, not dead agent
   localStorage.removeItem('clawworld_token');
 
