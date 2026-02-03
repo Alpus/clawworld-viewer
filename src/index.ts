@@ -23,6 +23,7 @@ let chatOpen = false;
 let chatText = '';
 let useMode = false; // F pressed, waiting for direction
 let lastActionTime = 0;
+let showItemLabels = false; // Toggle with L key
 const CLIENT_COOLDOWN = 200; // ms, throttle actions client-side
 
 // Camera
@@ -441,8 +442,8 @@ function drawItem(item: any, stackIndex: number = 0, stackSize: number = 1) {
     ctx2d.fillText('?', cx - 3, cy + 3);
   }
 
-  // Draw item label below (only for top item in stack)
-  if (stackIndex === stackSize - 1) {
+  // Draw item label below (only for top item in stack, if enabled)
+  if (showItemLabels && stackIndex === stackSize - 1) {
     const name = getItemNameFromTags(tags);
     if (name && name !== '?') {
       ctx2d.font = '7px monospace';
@@ -998,6 +999,11 @@ document.addEventListener('keydown', (e) => {
   }
   else if (e.key >= '1' && e.key <= '8') {
     selectedSlot = parseInt(e.key); // 1-8 for inventory
+  }
+
+  // Toggle item labels
+  else if (e.key === 'l' || e.key === 'L') {
+    showItemLabels = !showItemLabels;
   }
 
   // Chat
